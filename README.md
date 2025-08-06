@@ -10,4 +10,4 @@
 2.  运行下面这一条命令即可：
 
 ```bash
-wget -O install.sh [https://raw.githubusercontent.com/SIJULY/aws/main/install.sh](https://raw.githubusercontent.com/SIJULY/aws/main/install.sh) && bash install.sh
+wget -O install.sh https://raw.githubusercontent.com/SIJULY/aws/main/install.sh && bash install.sh
