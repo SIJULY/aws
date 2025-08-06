@@ -10,4 +10,4 @@ This application can be deployed on a fresh Ubuntu/Debian server using a one-cli
 2. Run the following command:
 
 ```bash
-wget -O install.sh <RAW_URL_TO_YOUR_install.sh> && sudo bash install.sh
+wget -O install.sh https://raw.githubusercontent.com/SIJULY/aws/main/install.sh && sudo bash install.sh
