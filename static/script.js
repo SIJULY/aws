@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
+    // --- 全局UI元素引用 ---
     const UI = {
         currentAccountStatus: document.getElementById('currentAccountStatus'),
         manageAccountsBtn: document.getElementById('manageAccountsBtn'),
@@ -30,6 +31,7 @@ document.addEventListener('DOMContentLoaded', function() {
     };
     let logPollingInterval = null;
 
+    // --- 辅助函数 ---
     const log = (message, type = 'info') => {
         const now = new Date().toLocaleTimeString();
         const colorClass = type === 'error' ? 'text-danger' : (type === 'success' ? 'text-success' : '');
@@ -102,7 +104,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <td>${inst.name || inst.id}</td>
             <td><span class="badge bg-${isRunning ? 'success' : 'secondary'}">${inst.state}</span></td>
             <td>${inst.ip}</td>
-            <td>${buttonsHTML}</td>`;
+            <td class="text-center">${buttonsHTML}</td>`;
         const existingRow = UI.instanceList.querySelector(`tr[data-id="${inst.id}"]`);
         if (existingRow) { existingRow.replaceWith(row); } 
         else { UI.instanceList.appendChild(row); }
@@ -183,7 +185,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 finalUserData = `#!/bin/bash\n${passwordCommand}\n${mainUserData}`;
             }
         }
-        
+
         const payload = {
             region: UI.regionSelector.value,
             user_data: finalUserData,
@@ -197,7 +199,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data && data.task_id) startLogPolling(data.task_id);
         } catch (error) { /* handled */ }
     };
-    
+
     const queryQuota = async (accountName) => {
         const row = UI.accountList.querySelector(`tr[data-account-name="${accountName}"]`);
         if (!row) return;
@@ -351,7 +353,7 @@ document.addEventListener('DOMContentLoaded', function() {
             icon.classList.add('bi-eye');
         }
     });
-    
+
     // --- 初始化 ---
     updateAwsLoginStatus();
 });

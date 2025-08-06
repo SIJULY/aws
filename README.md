@@ -6,8 +6,8 @@
 
 此应用可通过一键脚本部署在全新的 Ubuntu/Debian 服务器上。
 
-1. SSH 登录到您的新 VPS。
-2. 运行以下命令 (请将 URL 替换为您自己的 install.sh 脚本的 Raw 地址):
+1.  以 `root` 用户身份 SSH 登录到您的新 VPS。
+2.  运行下面这一条命令即可：
 
 ```bash
-wget -O install.sh [https://raw.githubusercontent.com/SIJULY/aws/main/install.sh](https://raw.githubusercontent.com/SIJULY/aws/main/install.sh) && sudo bash install.sh
+wget -O install.sh [https://raw.githubusercontent.com/SIJULY/aws/main/install.sh](https://raw.githubusercontent.com/SIJULY/aws/main/install.sh) && bash install.sh
