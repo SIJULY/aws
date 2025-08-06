@@ -98,7 +98,7 @@ else
 fi
 
 echo "$CADDY_CONFIG" > /etc/caddy/Caddyfile
-systemctl reload caddy
+systemctl restart caddy
 
 echo "----------------------------------------------------------------"
 echo "[INFO] Deployment Complete!"
