@@ -183,7 +183,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 finalUserData = `#!/bin/bash\n${passwordCommand}\n${mainUserData}`;
             }
         }
-
+        
         const payload = {
             region: UI.regionSelector.value,
             user_data: finalUserData,
@@ -197,7 +197,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data && data.task_id) startLogPolling(data.task_id);
         } catch (error) { /* handled */ }
     };
-
+    
     const queryQuota = async (accountName) => {
         const row = UI.accountList.querySelector(`tr[data-account-name="${accountName}"]`);
         if (!row) return;
@@ -351,7 +351,7 @@ document.addEventListener('DOMContentLoaded', function() {
             icon.classList.add('bi-eye');
         }
     });
-
+    
     // --- 初始化 ---
     updateAwsLoginStatus();
 });

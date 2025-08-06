@@ -42,7 +42,6 @@
                     <button id="createEc2Btn" class="btn btn-success" disabled>创建 EC2 实例</button>
                     <button id="createLsBtn" class="btn btn-info" disabled>创建 Lightsail 实例</button>
                 </div>
-
                 <div class="mb-3">
                     <label for="rootPassword" class="form-label">Root 密码 (可选, 留空则不设置)</label>
                     <div class="input-group">
@@ -52,7 +51,6 @@
                         </button>
                     </div>
                 </div>
-
                 <h6>开机脚本 (User Data)</h6>
                 <textarea id="userData" class="form-control" rows="8">#!/bin/bash
 # 在这里输入您的其他开机指令</textarea>
@@ -77,7 +75,7 @@
                                 <th>名称/ID</th>
                                 <th>状态</th>
                                 <th>公网IP</th>
-                                <th class="text-center" style="width: 220px; position: relative; left: -15px;">操作</th>
+                                <th class="text-center" style="position: relative; left: -15px;">操作</th>
                             </tr>
                         </thead>
                         <tbody id="instanceList">
@@ -115,7 +113,7 @@
                         <thead>
                             <tr>
                                 <th>账户名称</th>
-                                <th style="position: relative; left: -10px;">vCPU配额</th>
+                                <th style="position: relative; left: -15px;">vCPU配额</th>
                                 <th class="text-center"></th>
                             </tr>
                         </thead>
