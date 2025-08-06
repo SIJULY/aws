@@ -49,7 +49,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             if (!response.ok) {
                 let errorMsg = `HTTP 错误! 状态: ${response.status}`;
-                try { const errData = await response.json(); errorMsg = errData.error || JSON.stringify(errData); } 
+                try { const errData = await response.json(); errorMsg = errData.error || JSON.stringify(errData); }
                 catch (e) { errorMsg = await response.text(); }
                 throw new Error(errorMsg);
             }
@@ -106,7 +106,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <td>${inst.ip}</td>
             <td class="text-center">${buttonsHTML}</td>`;
         const existingRow = UI.instanceList.querySelector(`tr[data-id="${inst.id}"]`);
-        if (existingRow) { existingRow.replaceWith(row); } 
+        if (existingRow) { existingRow.replaceWith(row); }
         else { UI.instanceList.appendChild(row); }
     };
 
@@ -143,7 +143,7 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     const awsLogout = async () => {
-        try { 
+        try {
             await apiCall('/api/session', { method: 'DELETE' });
             log('已切换AWS账户，请重新选择。', 'info');
             updateAwsLoginStatus();
@@ -162,7 +162,7 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const data = await apiCall(endpoint);
             if (!data) throw new Error("未能获取实例类型数据");
-            const format = (type === 'ec2') 
+            const format = (type === 'ec2')
                 ? data.map(t => `<option value="${t.value}">${t.text}${t.value.includes('micro') ? ' (免费套餐可用)' : ''}</option>`).join('')
                 : data.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
             selector.innerHTML = format;
@@ -223,6 +223,10 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const accounts = await apiCall('/api/accounts');
             if (!accounts) return;
+
+            // ✨ 修改点：在这里添加排序代码 ✨
+            accounts.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+
             UI.accountList.innerHTML = accounts.length ? accounts.map(acc => `
                 <tr data-account-name="${acc.name}">
                     <td>${acc.name}</td>
