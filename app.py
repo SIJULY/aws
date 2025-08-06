@@ -8,7 +8,7 @@ app = Flask(__name__)
 # 【重要】请在这里设置您自己的固定Key
 app.secret_key = 'f9bade69a7e9423a9d0834921f855353'
 # 【重要】请在这里设置您自己的登录密码！
-PASSWORD = "YourSecurePassword123"
+PASSWORD = "1325"
 
 # --- 常量定义 ---
 KEY_FILE = "key.txt"
@@ -66,35 +66,129 @@ def aws_login_required(f):
     return decorated_function
 
 # --- 后台任务 ---
+
+# <<< 新增/修改部分开始 >>>
+
+def create_open_security_group(ec2_client, task_id):
+    """为EC2创建或获取一个开放所有端口的安全组"""
+    try:
+        # 获取默认VPC ID
+        vpcs = ec2_client.describe_vpcs(Filters=[{'Name': 'isDefault', 'Values': ['true']}])
+        if not vpcs['Vpcs']:
+            raise Exception("未找到默认VPC。")
+        default_vpc_id = vpcs['Vpcs'][0]['VpcId']
+
+        # 尝试创建安全组
+        group_name = 'OpenAllPorts'
+        log_task(task_id, f"正在创建名为 {group_name} 的安全组...")
+        response = ec2_client.create_security_group(
+            GroupName=group_name,
+            Description='Security group to allow all traffic',
+            VpcId=default_vpc_id
+        )
+        security_group_id = response['GroupId']
+        log_task(task_id, f"安全组 {security_group_id} 创建成功。正在配置入站规则...")
+
+        # 添加入站规则，允许所有流量
+        ec2_client.authorize_security_group_ingress(
+            GroupId=security_group_id,
+            IpPermissions=[{'IpProtocol': '-1', 'IpRanges': [{'CidrIp': '0.0.0.0/0'}]}]
+        )
+        log_task(task_id, f"安全组规则配置完成，允许所有端口访问。")
+        return security_group_id
+    except ClientError as e:
+        if "already exists" in str(e):
+            log_task(task_id, f"安全组 {group_name} 已存在，正在获取其ID...")
+            groups = ec2_client.describe_security_groups(GroupNames=[group_name])
+            security_group_id = groups['SecurityGroups'][0]['GroupId']
+            log_task(task_id, f"已获取存在的安全组ID: {security_group_id}")
+            return security_group_id
+        else:
+            raise e
+
+def configure_lightsail_firewall(lightsail_client, instance_name, task_id):
+    """为Lightsail实例开放所有端口"""
+    try:
+        # 等待实例进入可操作状态
+        log_task(task_id, f"等待实例 {instance_name} 进入可操作状态...")
+        waiter = lightsail_client.get_waiter('instance_running')
+        waiter.wait(instanceName=instance_name, WaiterConfig={'Delay': 15, 'MaxAttempts': 20}) # 等待最长5分钟
+        log_task(task_id, f"实例 {instance_name} 已运行，正在配置防火墙...")
+
+        # 配置防火墙规则
+        lightsail_client.put_instance_public_ports(
+            instanceName=instance_name,
+            portInfos=[{'fromPort': 0, 'toPort': 65535, 'protocol': 'all'}]
+        )
+        log_task(task_id, f"成功为实例 {instance_name} 配置防火墙，开放所有端口。")
+    except Exception as e:
+        # 如果等待超时或发生其他错误，记录日志
+        log_task(task_id, f"为实例 {instance_name} 配置防火墙失败: {str(e)}")
+
+
 def create_instance_task(service, task_id, access_key, secret_key, region, instance_type, user_data):
     log_task(task_id, f"{service.upper()} 任务启动: 区域 {region}, 类型/套餐 {instance_type}")
     try:
         if service == 'ec2':
             client = boto3.client('ec2', region_name=region, aws_access_key_id=access_key, aws_secret_access_key=secret_key, config=get_boto_config())
+            
+            # 1. 获取AMI
             images = client.describe_images(Owners=['136693071363'], Filters=[{'Name': 'name', 'Values': ['debian-12-amd64-*']}, {'Name': 'state', 'Values': ['available']}])
             if not images['Images']: raise Exception("未找到Debian 12的AMI")
             ami_id = sorted(images['Images'], key=lambda x: x['CreationDate'], reverse=True)[0]['ImageId']
             log_task(task_id, f"使用AMI: {ami_id}")
-            instance = client.run_instances(ImageId=ami_id, InstanceType=instance_type, MinCount=1, MaxCount=1, UserData=user_data)
+            
+            # 2. 创建或获取开放所有端口的安全组
+            security_group_id = create_open_security_group(client, task_id)
+            
+            # 3. 运行实例，并应用安全组
+            instance = client.run_instances(
+                ImageId=ami_id,
+                InstanceType=instance_type,
+                MinCount=1,
+                MaxCount=1,
+                UserData=user_data,
+                SecurityGroupIds=[security_group_id]  # 应用开放的安全组
+            )
             instance_id = instance['Instances'][0]['InstanceId']
             log_task(task_id, f"实例请求已发送, ID: {instance_id}")
+
+            # 4. 等待实例运行并获取IP
             waiter = client.get_waiter('instance_running')
             waiter.wait(InstanceIds=[instance_id])
             desc = client.describe_instances(InstanceIds=[instance_id])
             ip = desc['Reservations'][0]['Instances'][0].get('PublicIpAddress', 'N/A')
             log_task(task_id, f"实例 {instance_id} 已运行, 公网 IP: {ip}")
+
         elif service == 'lightsail':
             client = boto3.client('lightsail', region_name=region, aws_access_key_id=access_key, aws_secret_access_key=secret_key, config=get_boto_config())
+            
+            # 1. 获取蓝图
             blueprints = client.get_blueprints()
             debian_blueprints = sorted([bp for bp in blueprints['blueprints'] if 'debian' in bp['id'] and bp['isActive']], key=lambda x: x['version'], reverse=True)
             if not debian_blueprints: raise Exception("未找到可用的Debian蓝图")
             blueprint_id = debian_blueprints[0]['blueprintId']
             log_task(task_id, f"使用蓝图: {blueprint_id}")
+            
+            # 2. 创建实例
             instance_name = f"lightsail-{region}-{int(time.time())}"
-            client.create_instances(instanceNames=[instance_name], availabilityZone=f"{region}a", blueprintId=blueprint_id, bundleId=instance_type, userData=user_data)
+            client.create_instances(
+                instanceNames=[instance_name],
+                availabilityZone=f"{region}a",
+                blueprintId=blueprint_id,
+                bundleId=instance_type,
+                userData=user_data
+            )
             log_task(task_id, f"实例 {instance_name} 创建请求已发送。")
+            
+            # 3. 配置防火墙（在实例创建后进行）
+            configure_lightsail_firewall(client, instance_name, task_id)
+
         log_task(task_id, "--- 任务完成 ---")
     except Exception as e: handle_aws_error(e, task_id)
+
+# <<< 新增/修改部分结束 >>>
+
 def activate_region_task(task_id, access_key, secret_key, region):
     log_task(task_id, f"开始激活区域 {region}...")
     try:
