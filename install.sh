@@ -5,7 +5,7 @@ set -e
 
 # --- Configuration ---
 # 【重要】请将这里的URL替换为您自己创建的GitHub仓库的URL
-GIT_REPO_URL="GIT_REPO_URL="https://github.com/SIJULY/aws.git""
+GIT_REPO_URL="GIT_REPO_URL="https://github.com/SIJULY/aws.git"
 INSTALL_DIR="/var/www/aws-instance-web"
 SERVICE_NAME="aws-web"
 # --- End Configuration ---
