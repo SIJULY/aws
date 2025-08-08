@@ -14,10 +14,15 @@ echo "================================================="
 echo " 系统级全局代理配置脚本"
 echo "================================================="
 echo "此脚本将为整台服务器设置或清除 HTTP/HTTPS 代理。"
-echo "（内置代理用户名: user, 端口: 8888）"
 echo ""
 
-read -p " > 请输入代理服务器的 IP 地址 (留空则清除代理): " PROXY_IP
+# --- 【新增】的提示信息 ---
+echo "提示：如果您的代理服务器服务端尚未配置，可随时在服务端服务器上运行以下命令来安装："
+echo "wget -O install_tinyproxy.sh https://raw.githubusercontent.com/SIJULY/aws/main/install_tinyproxy.sh && bash install_tinyproxy.sh"
+echo "-------------------------------------------------"
+
+echo "（内置代理用户名: user, 端口: 8888）"
+read -p " > 请输入已就绪的服务端代理服务器的 IP 地址 (留空则清除代理): " PROXY_IP
 
 # 先清除所有旧的代理设置
 echo "正在更新系统环境配置..."
