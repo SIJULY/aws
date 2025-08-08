@@ -42,25 +42,36 @@ mv "$CONFIG_FILE" "$CONFIG_FILE.bak.$(date +%F-%T)" # 备份原始配置文件
 
 # 写入基础配置 (包含了所有必要的指令)
 cat > "$CONFIG_FILE" << EOF
+# --- 基础设置 ---
 User tinyproxy
 Group tinyproxy
 Port 8888
-Listen 0.0.0.0
+
+# --- 连接设置 ---
 Timeout 600
 DefaultErrorFile "/usr/share/tinyproxy/default.html"
-LogFile "/var/log/tinyproxy/tinyproxy.log"
-LogLevel Info
-PidFile "/run/tinyproxy/tinyproxy.pid"
 MaxClients 100
 MinSpareServers 5
 MaxSpareServers 20
 StartServers 10
 MaxRequestsPerChild 0
 
-安全设置: 只允许本机直连，其他所有IP必须通过密码认证
+# --- 日志文件 ---
+LogFile "/var/log/tinyproxy/tinyproxy.log"
+LogLevel Info
+PidFile "/run/tinyproxy/tinyproxy.pid"
+
+# --- 安全与认证 ---
+# 在所有网络接口上监听 (关键配置)
+Listen 0.0.0.0
+
+# 只允许本机直接访问
 Allow 127.0.0.1
+
+# 对所有其他连接要求用户名和密码认证
 BasicAuth ${PROXY_USER} ${PROXY_PASS}
 EOF
+
 # 5. 重启服务并设置防火墙
 echo "[INFO] 正在重启服务并设置防火墙..."
 # 确保日志目录存在且权限正确
@@ -86,5 +97,5 @@ echo "================================================="
 echo "请记下以下信息，用于配置您的客户端："
 echo "代理服务器 IP: ${SERVER_B_IP}"
 echo "代理密码: 【您刚刚设置的密码】"
-echo "(代理端口固定为 8888, 用户名固定为 user)"
+echo "(代理端口固定为 8888, 用户名固定为 ${PROXY_USER})"
 echo "================================================="
