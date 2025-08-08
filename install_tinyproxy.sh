@@ -90,15 +90,12 @@ fi
 # 6. 显示最终结果
 SERVER_B_IP=$(curl -s http://checkip.amazonaws.com || wget -qO- -t1 http://checkip.amazonaws.com)
 
+# --- 新的输出块 ---
 echo "================================================="
 echo "✅ 密码认证代理服务器安装成功！"
 echo "================================================="
-echo "您的代理服务器信息如下，请在客户端上使用："
+echo "请记下以下信息，用于配置您的客户端："
 echo "代理服务器 IP: ${SERVER_B_IP}"
-echo "代理端口: 8888"
-echo "代理用户名: ${PROXY_USER}"
 echo "代理密码: 【您刚刚设置的密码】"
-echo ""
-echo "--- 完整代理 URL (方便复制) ---"
-echo "http://${PROXY_USER}:${PROXY_PASS}@${SERVER_B_IP}:8888"
+echo "(代理端口固定为 8888, 用户名固定为 user)"
 echo "================================================="
