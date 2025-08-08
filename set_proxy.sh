@@ -3,7 +3,6 @@ set -e
 
 SERVICE_FILE="/etc/systemd/system/aws-web.service"
 SERVICE_NAME="aws-web.service"
-PROXY_USER="user"
 PROXY_PORT="8888"
 
 if [ "$(id -u)" -ne 0 ]; then echo "错误：此脚本需要以 root 权限运行。"; exit 1; fi
@@ -12,13 +11,14 @@ if [ ! -f "$SERVICE_FILE" ]; then echo "错误：找不到服务文件 '$SERVICE
 echo "================================================="
 echo " AWS 应用代理客户端配置脚本"
 echo "================================================="
-echo "此脚本将配置本机的 AWS 应用去使用一个已存在的代理服务器。"
-echo "（内置代理用户名: user, 端口: 8888）"
 
 read -p " > 请输入代理服务器的 IP 地址: " PROXY_IP
 if [ -z "$PROXY_IP" ]; then echo "错误：IP 地址不能为空。"; exit 1; fi
 
-read -s -p " > 请输入为代理服务器 'user' 用户设置的密码: " PROXY_PASS
+read -p " > 请输入代理服务器的用户名 [默认为 user]: " PROXY_USER
+PROXY_USER=${PROXY_USER:-user}
+
+read -s -p " > 请输入为用户 '${PROXY_USER}' 设置的密码: " PROXY_PASS
 echo ""
 if [ -z "$PROXY_PASS" ]; then echo "错误：密码不能为空。"; exit 1; fi
 
