@@ -13,7 +13,7 @@ wget -O install.sh https://raw.githubusercontent.com/SIJULY/aws/main/install.sh 
 
 3.设置代理（可选）
 
-wget -O bash set_proxy.sh https://raw.githubusercontent.com/SIJULY/aws/main/set_proxy.sh && bash set_proxy.sh
+wget -O set_proxy.sh https://raw.githubusercontent.com/SIJULY/aws/main/set_proxy.sh && bash set_proxy.sh
 
 代理端运行代码
 
