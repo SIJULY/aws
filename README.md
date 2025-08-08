@@ -9,7 +9,6 @@
 1.  以 `root` 用户身份 SSH 登录到您的新 VPS。
 2.  运行下面这一条命令即可：
 
-```bash
 wget -O install.sh https://raw.githubusercontent.com/SIJULY/aws/main/install.sh && bash install.sh
 
 3.设置代理（可选）
