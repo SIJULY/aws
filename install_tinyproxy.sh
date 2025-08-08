@@ -2,7 +2,7 @@
 set -e
 
 echo "================================================="
-echo " Tinyproxy 密码认证代理 一键安装脚本 (IP无限制版)"
+echo " Tinyproxy 密码认证代理 一键安装脚本 (IP无限制最终版)"
 echo "================================================="
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -31,23 +31,33 @@ CONFIG_FILE="/etc/tinyproxy/tinyproxy.conf"
 mv "$CONFIG_FILE" "$CONFIG_FILE.bak.$(date +%F-%T)"
 
 cat > "$CONFIG_FILE" << EOF
+--- 基础设置 ---
 User tinyproxy
 Group tinyproxy
 Port 8888
-Listen 0.0.0.0
+
+--- 连接设置 ---
 Timeout 600
 DefaultErrorFile "/usr/share/tinyproxy/default.html"
-LogFile "/var/log/tinyproxy/tinyproxy.log"
-LogLevel Info
-PidFile "/run/tinyproxy/tinyproxy.pid"
 MaxClients 100
 MinSpareServers 5
 MaxSpareServers 20
 StartServers 10
 MaxRequestsPerChild 0
 
-安全设置: 只允许本机直连，其他所有IP必须通过密码认证
+--- 日志文件 ---
+LogFile "/var/log/tinyproxy/tinyproxy.log"
+LogLevel Info
+PidFile "/run/tinyproxy/tinyproxy.pid"
+
+--- 安全与认证 ---
+在所有网络接口上监听 (允许公网访问)
+Listen 0.0.0.0
+
+只允许本机通过IP直接访问
 Allow 127.0.0.1
+
+对所有外部连接要求用户名和密码认证
 BasicAuth ${PROXY_USER} ${PROXY_PASS}
 EOF
 
@@ -69,7 +79,7 @@ SERVER_B_IP=$(curl -s http://checkip.amazonaws.com || wget -qO- -t1 http://check
 echo "================================================="
 echo "✅ 密码认证代理服务器安装成功！"
 echo "================================================="
-echo "请记下以下信息，用于配置您的任何客户端："
+echo "请记下以下信息，用于配置您的客户端："
 echo "代理服务器 IP: ${SERVER_B_IP}"
 echo "代理端口: 8888"
 echo "代理用户名: ${PROXY_USER}"
