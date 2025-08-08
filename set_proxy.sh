@@ -21,13 +21,13 @@ if [ ! -f "$SERVICE_FILE" ]; then
     exit 1
 fi
 
-# 3. 提示用户输入 (按照您的要求修改)
+# 3. 提示用户输入 
 echo "================================================="
 echo " AWS 应用代理设置"
 echo "================================================="
-echo "请输入从 B代理服务器获取的完整代理 URL："
+echo "请输入从代理服务器获取的完整代理 URL（ 留空并按回车则为'清除代理' ）："
 echo "（代理服务器设置脚本：wget -O install_tinyproxy.sh https://raw.githubusercontent.com/SIJULY/aws/main/install_tinyproxy.sh && bash install_tinyproxy.sh）"
-read -p "留空并按回车则为'清除代理' -> " PROXY_URL
+read PROXY_URL
 
 # 4. 修改 systemd 服务文件
 echo "正在更新服务配置..."
