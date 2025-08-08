@@ -14,11 +14,11 @@ echo " AWS 应用代理客户端配置脚本"
 echo "================================================="
 
 # --- 【新增】的提示信息 ---
-echo "提示：如果您的代理服务器尚未配置，可随时在代理服务器上运行以下命令来安装/重装："
+echo "提示：如果您的代理服务器服务端尚未配置，可随时在服务端服务器上运行以下命令来安装/重装："
 echo "wget -O install_tinyproxy.sh https://raw.githubusercontent.com/SIJULY/aws/main/install_tinyproxy.sh && bash install_tinyproxy.sh"
 echo "-------------------------------------------------"
 
-read -p " > 请输入已就绪的代理服务器的 IP 地址: " PROXY_IP
+read -p " > 请输入已就绪的服务端代理服务器的 IP 地址: " PROXY_IP
 if [ -z "$PROXY_IP" ]; then echo "错误：IP 地址不能为空。"; exit 1; fi
 
 read -p " > 请输入代理服务器的用户名 [默认为 user]: " PROXY_USER
