@@ -1,85 +1,112 @@
 #!/bin/bash
 
-# 如果任何命令失败，立即退出脚本
+# Exit immediately if a command exits with a non-zero status.
 set -e
 
-# --- 主逻辑 ---
-echo "================================================="
-echo " Tinyproxy 密码认证代理 一键安装脚本"
-echo " (IP无限制, 端口: 8888, 用户名: user)"
-echo "================================================="
+# --- Configuration ---
+GIT_REPO_URL="https://github.com/SIJULY/aws.git"
+INSTALL_DIR="/var/www/aws-instance-web"
+SERVICE_NAME="aws-web"
+APP_PORT="5001"
+# --- End Configuration ---
 
-# 1. 检查是否以 root 权限运行
+echo "[INFO] Starting AWS Instance Web deployment..."
+
 if [ "$(id -u)" -ne 0 ]; then
-    echo "错误：此脚本需要以 root 权限运行。"
+    echo "[ERROR] This script must be run with sudo or as root. Please use 'sudo bash $0'"
     exit 1
 fi
 
-# 2. 更新系统并安装 Tinyproxy
-echo "[INFO] 正在更新软件包列表并安装 Tinyproxy..."
+# --- [修改] 安装 Caddy Web服务器 ---
+echo "[INFO] Installing dependencies (git, python, caddy)..."
 apt-get update -y
-apt-get install -y tinyproxy curl
+apt-get install -y git python3 python3-pip python3-venv curl
+apt-get install -y debian-keyring debian-archive-keyring apt-transport-https
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+apt-get update -y
+apt-get install -y caddy
 
-# 3. 交互式获取配置信息
-echo ""
-echo "[CONFIG] 请为代理服务设置密码："
-
-read -s -p " > 请为默认用户 'user' 设置代理密码: " PROXY_PASS
-echo "" # read -s 不会换行，我们手动加一个
-if [ -z "$PROXY_PASS" ]; then
-    echo "错误：密码不能为空。"
-    exit 1
+echo "[INFO] Cloning application from GitHub repository..."
+if [ -d "$INSTALL_DIR" ]; then
+    echo "[WARN] Backing up existing directory: $INSTALL_DIR"
+    mv "$INSTALL_DIR" "$INSTALL_DIR.bak.$(date +%F-%T)"
 fi
+git clone "$GIT_REPO_URL" "$INSTALL_DIR"
+cd "$INSTALL_DIR"
 
-# 4. 备份并创建新的配置文件
-echo "[INFO] 正在配置 Tinyproxy..."
-CONFIG_FILE="/etc/tinyproxy/tinyproxy.conf"
-mv "$CONFIG_FILE" "$CONFIG_FILE.bak.$(date +%F-%T)" # 备份原始配置文件
+echo "[INFO] Setting up Python virtual environment..."
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt
 
-# 写入基础配置 (已移除IP限制，固定端口和用户)
-cat > "$CONFIG_FILE" << EOF
-User tinyproxy
-Group tinyproxy
-Port 8888
-Timeout 600
-DefaultErrorFile "/usr/share/tinyproxy/default.html"
-LogFile "/var/log/tinyproxy/tinyproxy.log"
-LogLevel Info
-PidFile "/run/tinyproxy/tinyproxy.pid"
-MaxClients 100
-MinSpareServers 5
-MaxSpareServers 20
-StartServers 10
-MaxRequestsPerChild 0
+echo "[INFO] Creating empty key file. You must edit it later."
+touch "$INSTALL_DIR/key.txt"
 
-# 只允许本机访问，外部访问必须通过密码认证
-Allow 127.0.0.1
+# --- [修改] 优化密码提示 ---
+echo "[INFO] Configuring application password..."
+read -p "请输入网页应用的登录密码: " user_password
+if [ -z "$user_password" ]; then
+    echo "[ERROR] Password cannot be empty."; exit 1
+fi
+sed -i "s|PASSWORD = \".*\"|PASSWORD = \"$user_password\"|" "$INSTALL_DIR/app.py"
 
-# 基础认证设置 (固定用户名为 user)
-BasicAuth user ${PROXY_PASS}
+chown -R caddy:caddy "$INSTALL_DIR" # Caddy 默认使用 caddy 用户
+
+echo "[INFO] Creating Systemd service file..."
+cat > "/etc/systemd/system/$SERVICE_NAME.service" << EOF
+[Unit]
+Description=Gunicorn instance for AWS Instance Web
+After=network.target
+
+[Service]
+User=caddy
+Group=caddy
+WorkingDirectory=$INSTALL_DIR
+Environment="PATH=$INSTALL_DIR/venv/bin"
+ExecStart=$INSTALL_DIR/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:$APP_PORT app:app
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
 EOF
+echo "[INFO] Starting and enabling application service..."
+systemctl daemon-reload
+systemctl stop "$SERVICE_NAME" >/dev/null 2>&1 || true
+systemctl start "$SERVICE_NAME"
+systemctl enable "$SERVICE_NAME"
 
-# 5. 重启服务并设置防火墙
-echo "[INFO] 正在重启服务并设置防火墙..."
-systemctl restart tinyproxy
-systemctl enable tinyproxy
+# --- [修改] 增加域名询问和Caddy配置逻辑 ---
+echo "[INFO] Configuring Caddy reverse proxy..."
+read -p "请输入您的域名 (如果留空, 将使用IP地址访问): " DOMAIN_NAME
 
-if command -v ufw &> /dev/null && ufw status | grep -q 'Status: active'; then
-    echo "[INFO] 检测到防火墙(ufw)已启用，正在开放端口 8888..."
-    ufw allow 8888/tcp
+SERVER_IP=$(curl -s http://checkip.amazonaws.com || wget -qO- -t1 http://checkip.amazonaws.com)
+ADDRESS_TO_USE=$SERVER_IP
+PROTOCOL="http"
+
+if [ -n "$DOMAIN_NAME" ]; then
+    echo "[INFO] Domain name provided. Configuring Caddy for $DOMAIN_NAME with automatic HTTPS..."
+    ADDRESS_TO_USE=$DOMAIN_NAME
+    PROTOCOL="https"
+    CADDY_CONFIG="$DOMAIN_NAME {
+    reverse_proxy 127.0.0.1:$APP_PORT
+}"
 else
-    echo "[WARN] 未检测到活动的 ufw 防火墙。请确保您已在云服务商的安全组中放行了 TCP 端口 8888。"
+    echo "[INFO] No domain name provided. Configuring Caddy for IP address access..."
+    CADDY_CONFIG="http://$SERVER_IP {
+    reverse_proxy 127.0.0.1:$APP_PORT
+}"
 fi
 
-# 6. 显示最终结果
-SERVER_IP=$(curl -s http://checkip.amazonaws.com || wget -qO- -t1 http://checkip.amazonaws.com)
+echo "$CADDY_CONFIG" > /etc/caddy/Caddyfile
+systemctl restart caddy
 
-echo "================================================="
-echo "✅ 密码认证代理服务器安装成功！"
-echo "================================================="
-echo "此代理服务器已准备就绪，可供其他客户端使用。"
-echo "IP 地址: ${SERVER_IP}"
-echo "端口: 8888"
-echo "用户名: user"
-echo "密码: 【您刚刚设置的密码】"
-echo "================================================="
+echo "----------------------------------------------------------------"
+echo "[INFO] 部署成功！(Deployment Complete!)"
+echo "[INFO] 您的应用已准备就绪，请通过以下地址登录："
+echo "[INFO] 登录地址 (Login Address): $PROTOCOL://$ADDRESS_TO_USE"
+echo ""
+echo "[WARN] 【重要】如果您使用了域名，请确保域名的A记录已指向IP: $SERVER_IP"
+echo "[WARN] 【重要】登录后，您必须在应用内手动添加您的AWS密钥才能使用！"
+echo "[WARN]   1. 使用您在安装时设置的密码登录 Web 界面。"
+echo "[WARN]   2. 进入“管理AWS账户”并添加您的密钥。"
+echo "----------------------------------------------------------------"
