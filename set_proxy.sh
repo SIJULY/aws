@@ -3,16 +3,22 @@ set -e
 
 SERVICE_FILE="/etc/systemd/system/aws-web.service"
 SERVICE_NAME="aws-web.service"
+PROXY_USER="user"
 PROXY_PORT="8888"
 
 if [ "$(id -u)" -ne 0 ]; then echo "错误：此脚本需要以 root 权限运行。"; exit 1; fi
-if [ ! -f "$SERVICE_FILE" ]; then echo "错误：找不到服务文件 '$SERVICE_FILE'。"; exit 1; fi
+if [ ! -f "$SERVICE_FILE" ]; then echo "错误：找不到服务文件 '$SERVICE_FILE'。请确保主应用已正确安装。"; exit 1; fi
 
 echo "================================================="
 echo " AWS 应用代理客户端配置脚本"
 echo "================================================="
 
-read -p " > 请输入代理服务器的 IP 地址: " PROXY_IP
+# --- 【新增】的提示信息 ---
+echo "提示：如果您的代理服务器尚未配置，可随时在代理服务器上运行以下命令来安装/重装："
+echo "wget -O install_tinyproxy.sh https://raw.githubusercontent.com/SIJULY/aws/main/install_tinyproxy.sh && bash install_tinyproxy.sh"
+echo "-------------------------------------------------"
+
+read -p " > 请输入已就绪的代理服务器的 IP 地址: " PROXY_IP
 if [ -z "$PROXY_IP" ]; then echo "错误：IP 地址不能为空。"; exit 1; fi
 
 read -p " > 请输入代理服务器的用户名 [默认为 user]: " PROXY_USER
