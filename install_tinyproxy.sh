@@ -23,7 +23,7 @@ apt-get install -y tinyproxy curl
 echo ""
 echo "[CONFIG] 请输入配置信息："
 
-read -p " > 允许连接此代理的客户端IP (您的 A 服务器 IP): " ALLOWED_IP
+read -p " > 允许连接此代理的客户端IP (您的服务器 IP): " ALLOWED_IP
 if [ -z "$ALLOWED_IP" ]; then
     echo "错误：必须输入一个允许访问的IP地址。"
     exit 1
