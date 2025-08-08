@@ -5,8 +5,7 @@ set -e
 
 # --- 主逻辑 ---
 echo "================================================="
-echo " Tinyproxy 密码认证代理 一键安装脚本 (最终修正版)"
-echo " (IP无限制, 端口: 8888, 用户名默认为 'user')"
+echo " Tinyproxy 密码认证代理 一键安装脚本 (IP无限制最终版)"
 echo "================================================="
 
 # 1. 检查是否以 root 权限运行
@@ -28,7 +27,7 @@ read -p " > 请输入代理用户名 [默认为 user]: " PROXY_USER
 # 如果用户直接回车，PROXY_USER为空，则将其设置为默认值'user'
 PROXY_USER=${PROXY_USER:-user}
 
-read -s -p " > 请为用户 '${PROXY_USER}' 设置代理密码: " PROXY_PASS
+read -s -p " > 请为用户 '${PROXY_USER}' 设置一个强密码: " PROXY_PASS
 echo "" # read -s 不会换行，我们手动加一个
 if [ -z "$PROXY_PASS" ]; then
     echo "错误：密码不能为空。"
@@ -40,7 +39,7 @@ echo "[INFO] 正在配置 Tinyproxy..."
 CONFIG_FILE="/etc/tinyproxy/tinyproxy.conf"
 mv "$CONFIG_FILE" "$CONFIG_FILE.bak.$(date +%F-%T)" # 备份原始配置文件
 
-# 写入基础配置 (【关键修正】所有中文说明都已正确注释)
+# 写入基础配置 (最终版 - 允许所有IP，然后用密码验证)
 cat > "$CONFIG_FILE" << EOF
 # --- 基础设置 ---
 User tinyproxy
@@ -65,10 +64,11 @@ PidFile "/run/tinyproxy/tinyproxy.pid"
 # 在所有网络接口上监听 (允许公网访问)
 Listen 0.0.0.0
 
-# 只允许本机通过IP直接访问
+# 允许本机和任何外部IP进行连接尝试
 Allow 127.0.0.1
+Allow 0.0.0.0/0
 
-# 对所有外部连接要求用户名和密码认证
+# 对所有连接强制要求用户名和密码认证
 BasicAuth ${PROXY_USER} ${PROXY_PASS}
 EOF
 
@@ -96,6 +96,7 @@ echo "✅ 密码认证代理服务器安装成功！"
 echo "================================================="
 echo "请记下以下信息，用于配置您的客户端："
 echo "代理服务器 IP: ${SERVER_B_IP}"
+echo "代理端口: 8888"
+echo "代理用户名: ${PROXY_USER}"
 echo "代理密码: 【您刚刚设置的密码】"
-echo "(代理端口固定为 8888, 用户名固定为 ${PROXY_USER})"
 echo "================================================="
