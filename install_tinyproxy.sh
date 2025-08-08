@@ -42,12 +42,12 @@ mv "$CONFIG_FILE" "$CONFIG_FILE.bak.$(date +%F-%T)" # 备份原始配置文件
 
 # 写入基础配置 (包含了所有必要的指令和正确的注释)
 cat > "$CONFIG_FILE" << EOF
---- 基础设置 ---
+#--- 基础设置 ---
 User tinyproxy
 Group tinyproxy
 Port 8888
 
---- 连接设置 ---
+#--- 连接设置 ---
 Timeout 600
 DefaultErrorFile "/usr/share/tinyproxy/default.html"
 MaxClients 100
@@ -56,19 +56,19 @@ MaxSpareServers 20
 StartServers 10
 MaxRequestsPerChild 0
 
---- 日志文件 ---
+#--- 日志文件 ---
 LogFile "/var/log/tinyproxy/tinyproxy.log"
 LogLevel Info
 PidFile "/run/tinyproxy/tinyproxy.pid"
 
---- 安全与认证 ---
+#--- 安全与认证 ---
 在所有网络接口上监听 (允许公网访问)
 Listen 0.0.0.0
 
-只允许本机通过IP直接访问
+#只允许本机通过IP直接访问
 Allow 127.0.0.1
 
-对所有外部连接要求用户名和密码认证
+#对所有外部连接要求用户名和密码认证
 BasicAuth ${PROXY_USER} ${PROXY_PASS}
 EOF
 
