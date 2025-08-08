@@ -60,7 +60,7 @@ MaxRequestsPerChild 0
 安全设置: 只允许本机直连，其他所有IP必须通过密码认证
 Allow 127.0.0.1
 BasicAuth ${PROXY_USER} ${PROXY_PASS}
-EO
+EOF
 # 5. 重启服务并设置防火墙
 echo "[INFO] 正在重启服务并设置防火墙..."
 # 确保日志目录存在且权限正确
