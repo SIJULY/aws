@@ -1,4 +1,4 @@
-# AWS Instance Web 工具套件
+# 东半球最好用的免费 AWS Instance Web 工具套件
 
 这是一个功能强大的工具套件，源于一个本地 Tkinter 脚本，最终演变为一个包含主应用、代理服务器和一键部署脚本的完整 Web 应用。
 
