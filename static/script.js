@@ -13,8 +13,6 @@ document.addEventListener('DOMContentLoaded', function() {
         createEc2Btn: document.getElementById('createEc2Btn'),
         createLsBtn: document.getElementById('createLsBtn'),
         userData: document.getElementById('userData'),
-        rootPassword: document.getElementById('rootPassword'),
-        togglePassword: document.getElementById('togglePassword'),
         instanceList: document.getElementById('instanceList'),
         logOutput: document.getElementById('logOutput'),
         clearLogBtn: document.getElementById('clearLogBtn'),
@@ -170,33 +168,20 @@ document.addEventListener('DOMContentLoaded', function() {
         finally { spinner.style.display = 'none'; }
     };
     
-    // ✨ 这是修改后的最终版 createInstance 函数 ✨
+    // ✨ 这是最终简化版的 createInstance 函数 ✨
     const createInstance = async (type) => {
-        const rootPassword = UI.rootPassword.value;
-        let finalUserData = UI.userData.value;
-        const placeholder = '__SET_PASSWORD_COMMAND_PLACEHOLDER__';
-    
-        // 检查是否输入了密码
-        if (rootPassword && rootPassword.trim() !== '') {
-            // 构建一个非常稳健的密码设置命令，包含日志记录
-            const passwordCommand = `echo 'root:${rootPassword}' | chpasswd && echo "[SUCCESS] Root password set at $(date)" >> /root/install.log || echo "[FAILED] Root password could not be set at $(date)" >> /root/install.log`;
-            
-            // 替换占位符
-            finalUserData = finalUserData.replace(placeholder, passwordCommand);
-        } else {
-            // 如果没有密码，就移除占位符行
-            finalUserData = finalUserData.replace(placeholder, '# No password was set.');
-        }
+        // 直接获取文本域中的脚本内容
+        const finalUserData = UI.userData.value;
     
         const payload = {
             region: UI.regionSelector.value,
-            user_data: finalUserData, // 使用处理后的脚本
+            user_data: finalUserData,
             ...(type === 'ec2' ? { instance_type: UI.ec2TypeSelector.value } : { bundle_id: UI.lightsailTypeSelector.value })
         };
         
         (type === 'ec2' ? UI.ec2TypeModal : UI.lightsailTypeModal).hide();
         log(`请求在 ${payload.region} 创建 ${type.toUpperCase()} 实例...`);
-        log(`最终 User Data 脚本:\n${finalUserData}`); // 打印最终脚本以供调试
+        log(`发送的 User Data 脚本:\n${finalUserData}`); // 打印最终脚本以供调试
     
         try {
             const data = await apiCall(`/api/instances/${type}`, { 
@@ -358,19 +343,9 @@ document.addEventListener('DOMContentLoaded', function() {
     UI.confirmEc2CreationBtn.addEventListener('click', () => createInstance('ec2'));
     UI.confirmLightsailCreationBtn.addEventListener('click', () => createInstance('lightsail'));
     UI.clearLogBtn.addEventListener('click', () => { UI.logOutput.innerHTML = ''; });
-    UI.togglePassword.addEventListener('click', () => {
-        const input = UI.rootPassword;
-        const icon = UI.togglePassword.querySelector('i');
-        if (input.type === 'password') {
-            input.type = 'text';
-            icon.classList.remove('bi-eye');
-            icon.classList.add('bi-eye-slash');
-        } else {
-            input.type = 'password';
-            icon.classList.remove('bi-eye-slash');
-            icon.classList.add('bi-eye');
-        }
-    });
+    
+    // This event listener is no longer needed as the toggle button was removed.
+    // UI.togglePassword.addEventListener('click', () => { ... });
 
     // --- 初始化 ---
     updateAwsLoginStatus();
