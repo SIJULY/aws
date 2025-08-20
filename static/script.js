@@ -169,29 +169,25 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) { selector.innerHTML = `<option>加载失败: ${error.message}</option>`; }
         finally { spinner.style.display = 'none'; }
     };
-
-    // ✨ 修改开始: 重写 createInstance 函数以集成密码设置逻辑 ✨
+    
+    // ✨ 这是修改后的最终版 createInstance 函数 ✨
     const createInstance = async (type) => {
         const rootPassword = UI.rootPassword.value;
-        const mainUserData = UI.userData.value;
-        let finalUserData = mainUserData;
-
+        let finalUserData = UI.userData.value;
+        const placeholder = '__SET_PASSWORD_COMMAND_PLACEHOLDER__';
+    
         // 检查是否输入了密码
         if (rootPassword && rootPassword.trim() !== '') {
-            const passwordCommand = `echo 'root:${rootPassword}' | chpasswd`;
-            const shebang = '#!/bin/bash';
-
-            // 智能地将密码命令插入到 #!/bin/bash 之后
-            if (mainUserData.trim().startsWith(shebang)) {
-                const lines = mainUserData.split('\n');
-                lines.splice(1, 0, passwordCommand); // 在第二行插入命令
-                finalUserData = lines.join('\n');
-            } else {
-                // 如果脚本没有 shebang，则在最前面添加
-                finalUserData = `${shebang}\n${passwordCommand}\n${mainUserData}`;
-            }
+            // 构建一个非常稳健的密码设置命令，包含日志记录
+            const passwordCommand = `echo 'root:${rootPassword}' | chpasswd && echo "[SUCCESS] Root password set at $(date)" >> /root/install.log || echo "[FAILED] Root password could not be set at $(date)" >> /root/install.log`;
+            
+            // 替换占位符
+            finalUserData = finalUserData.replace(placeholder, passwordCommand);
+        } else {
+            // 如果没有密码，就移除占位符行
+            finalUserData = finalUserData.replace(placeholder, '# No password was set.');
         }
-
+    
         const payload = {
             region: UI.regionSelector.value,
             user_data: finalUserData, // 使用处理后的脚本
@@ -201,7 +197,7 @@ document.addEventListener('DOMContentLoaded', function() {
         (type === 'ec2' ? UI.ec2TypeModal : UI.lightsailTypeModal).hide();
         log(`请求在 ${payload.region} 创建 ${type.toUpperCase()} 实例...`);
         log(`最终 User Data 脚本:\n${finalUserData}`); // 打印最终脚本以供调试
-
+    
         try {
             const data = await apiCall(`/api/instances/${type}`, { 
                 method: 'POST', 
@@ -211,7 +207,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data && data.task_id) startLogPolling(data.task_id);
         } catch (error) { /* apiCall函数已处理日志 */ }
     };
-    // ✨ 修改结束 ✨
 
     const queryQuota = async (accountName) => {
         const row = UI.accountList.querySelector(`tr[data-account-name="${accountName}"]`);
