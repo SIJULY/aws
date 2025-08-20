@@ -53,6 +53,10 @@
                 </div>
                 <h6>开机脚本 (User Data)</h6>
                 <textarea id="userData" class="form-control" rows="8">#!/bin/bash
+# --- 开启 Root 密码登录支持 (针对新版 AMI) ---
+sed -i 's/^#?PermitRootLogin.*/PermitRootLogin yes/g' /etc/ssh/sshd_config
+systemctl restart sshd || systemctl restart ssh
+                    
 # 默认脚本: 安装 Xray 套件 &amp; gost SOCKS5 代理
 
 # --- 第一部分: 安装 Xray 套件 ---
