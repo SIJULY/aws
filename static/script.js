@@ -170,35 +170,48 @@ document.addEventListener('DOMContentLoaded', function() {
         finally { spinner.style.display = 'none'; }
     };
 
+    // ✨ 修改开始: 重写 createInstance 函数以集成密码设置逻辑 ✨
     const createInstance = async (type) => {
-        const rootPassword = UI.rootPassword.value.trim();
+        const rootPassword = UI.rootPassword.value;
         const mainUserData = UI.userData.value;
         let finalUserData = mainUserData;
 
-        if (rootPassword) {
-            const passwordCommand = `echo "root:${rootPassword}" | chpasswd`;
-            if (mainUserData.trim().startsWith('#!/bin/bash')) {
+        // 检查是否输入了密码
+        if (rootPassword && rootPassword.trim() !== '') {
+            const passwordCommand = `echo 'root:${rootPassword}' | chpasswd`;
+            const shebang = '#!/bin/bash';
+
+            // 智能地将密码命令插入到 #!/bin/bash 之后
+            if (mainUserData.trim().startsWith(shebang)) {
                 const lines = mainUserData.split('\n');
-                lines.splice(1, 0, passwordCommand);
+                lines.splice(1, 0, passwordCommand); // 在第二行插入命令
                 finalUserData = lines.join('\n');
             } else {
-                finalUserData = `#!/bin/bash\n${passwordCommand}\n${mainUserData}`;
+                // 如果脚本没有 shebang，则在最前面添加
+                finalUserData = `${shebang}\n${passwordCommand}\n${mainUserData}`;
             }
         }
 
         const payload = {
             region: UI.regionSelector.value,
-            user_data: finalUserData,
+            user_data: finalUserData, // 使用处理后的脚本
             ...(type === 'ec2' ? { instance_type: UI.ec2TypeSelector.value } : { bundle_id: UI.lightsailTypeSelector.value })
         };
+        
         (type === 'ec2' ? UI.ec2TypeModal : UI.lightsailTypeModal).hide();
         log(`请求在 ${payload.region} 创建 ${type.toUpperCase()} 实例...`);
-        log(`最终 User Data:\n${finalUserData}`);
+        log(`最终 User Data 脚本:\n${finalUserData}`); // 打印最终脚本以供调试
+
         try {
-            const data = await apiCall(`/api/instances/${type}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const data = await apiCall(`/api/instances/${type}`, { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify(payload) 
+            });
             if (data && data.task_id) startLogPolling(data.task_id);
-        } catch (error) { /* handled */ }
+        } catch (error) { /* apiCall函数已处理日志 */ }
     };
+    // ✨ 修改结束 ✨
 
     const queryQuota = async (accountName) => {
         const row = UI.accountList.querySelector(`tr[data-account-name="${accountName}"]`);
@@ -223,10 +236,7 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const accounts = await apiCall('/api/accounts');
             if (!accounts) return;
-
-            // ✨ 修改点：在这里添加排序代码 ✨
             accounts.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
-
             UI.accountList.innerHTML = accounts.length ? accounts.map(acc => `
                 <tr data-account-name="${acc.name}">
                     <td>${acc.name}</td>
@@ -242,6 +252,7 @@ document.addEventListener('DOMContentLoaded', function() {
             UI.manageAccountsModal.show();
         } catch (error) { /* handled */ }
     });
+
     UI.accountList.addEventListener('click', async (event) => {
         const button = event.target.closest('button[data-action]');
         if (!button) return;
@@ -262,6 +273,7 @@ document.addEventListener('DOMContentLoaded', function() {
             queryQuota(accountName);
         }
     });
+
     UI.saveAccountBtn.addEventListener('click', async () => {
         const form = document.getElementById('addAccountForm');
         const name = document.getElementById('accountName').value;
@@ -275,15 +287,18 @@ document.addEventListener('DOMContentLoaded', function() {
             UI.addAccountModal.hide();
         } catch (error) { alert(`添加失败: ${error.message}`); }
     });
+
     UI.queryAllQuotasBtn.addEventListener('click', () => {
         log('开始查询所有账户的配额...');
         const rows = UI.accountList.querySelectorAll('tr[data-account-name]');
         rows.forEach(row => { queryQuota(row.dataset.accountName); });
     });
+
     UI.regionSelector.addEventListener('change', () => {
         const selectedOption = UI.regionSelector.options[UI.regionSelector.selectedIndex];
         if (selectedOption) { UI.activateRegionBtn.disabled = (selectedOption.dataset.enabled === 'true'); }
     });
+
     UI.activateRegionBtn.addEventListener('click', async () => {
         const region = UI.regionSelector.value;
         if (!region || UI.activateRegionBtn.disabled) return;
@@ -293,6 +308,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if(data && data.task_id) startLogPolling(data.task_id);
         } catch(e) {}
     });
+
     UI.querySelectedRegionBtn.addEventListener('click', async () => {
         const region = UI.regionSelector.value;
         log(`正在查询区域 ${region} 的实例...`);
@@ -308,6 +324,7 @@ document.addEventListener('DOMContentLoaded', function() {
             log(`区域 ${region} 查询完成。`, 'success');
         } catch(error) { UI.instanceList.innerHTML = `<tr><td colspan="6" class="text-center text-danger">查询失败: ${error.message}</td></tr>`; }
     });
+
     UI.queryAllRegionsBtn.addEventListener('click', async () => {
         log("即将查询所有区域，过程可能较慢，请稍候...");
         try {
@@ -315,6 +332,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if(data && data.task_id) startLogPolling(data.task_id, true);
         } catch(error) { /* handled */ }
     });
+
     UI.instanceList.addEventListener('click', async (event) => {
         const button = event.target.closest('button[data-action]');
         if (!button || button.disabled) return;
@@ -339,6 +357,7 @@ document.addEventListener('DOMContentLoaded', function() {
             setTimeout(() => { UI.querySelectedRegionBtn.dispatchEvent(new Event('click')); }, 5000);
         } catch(error) { setTimeout(() => { UI.querySelectedRegionBtn.dispatchEvent(new Event('click')); }, 500); }
     });
+
     UI.createEc2Btn.addEventListener('click', () => openInstanceTypeModal('ec2'));
     UI.createLsBtn.addEventListener('click', () => openInstanceTypeModal('lightsail'));
     UI.confirmEc2CreationBtn.addEventListener('click', () => createInstance('ec2'));
