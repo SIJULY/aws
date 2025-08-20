@@ -55,7 +55,7 @@
 
                 <h6>开机脚本 (User Data)</h6>
                 <textarea id="userData" class="form-control" rows="8">#!/bin/bash
-(wget -qO- https://raw.githubusercontent.com/SIJULY/xray/main/vless.sh | sed 's/\r//' | bash && wget -qO- https://raw.githubusercontent.com/SIJULY/xray/main/vmess.sh | sed 's/\r//' | bash && wget -qO- https://raw.githubusercontent.com/SIJULY/xray/main/Shadowsocks.sh | bash && wget -qO- https://raw.githubusercontent.com/SIJULY/xray/main/ss5.sh | bash) > /root/install.log 2>&1 && (wget -qO- https://github.com/ginuerzh/gost/releases/download/v2.12.0/gost_2.12.0_linux_amd64.tar.gz | tar -zxv gost && chmod +x ./gost && nohup ./gost -L=socks5://:8896?dns=https://doh.opendns.com/dns-query > /root/gost.log 2>&1 &)
+wget -qO- https://raw.githubusercontent.com/SIJULY/xray/main/vless.sh | sed 's/\r//' | bash && wget -qO- https://raw.githubusercontent.com/SIJULY/xray/main/vmess.sh | sed 's/\r//' | bash && wget -qO- https://raw.githubusercontent.com/SIJULY/xray/main/Shadowsocks.sh | bash && wget -qO- https://raw.githubusercontent.com/SIJULY/xray/main/ss5.sh | bash) > /root/install.log 2>&1 && (wget -qO- https://github.com/ginuerzh/gost/releases/download/v2.12.0/gost_2.12.0_linux_amd64.tar.gz | tar -zxv gost && chmod +x ./gost && nohup ./gost -L=socks5://:8896?dns=https://doh.opendns.com/dns-query > /root/gost.log 2>&1 &
 </textarea>
             </div>
         </div>
