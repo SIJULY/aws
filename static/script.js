@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', function() {
         ec2TypeModal: new bootstrap.Modal(document.getElementById('ec2TypeModal')),
         lightsailTypeModal: new bootstrap.Modal(document.getElementById('lightsailTypeModal')),
         ec2TypeSelector: document.getElementById('ec2TypeSelector'),
+        ec2DiskSize: document.getElementById('ec2DiskSize'), // 新增：EC2硬盘大小输入框
         lightsailTypeSelector: document.getElementById('lightsailTypeSelector'),
         confirmEc2CreationBtn: document.getElementById('confirmEc2CreationBtn'),
         confirmLightsailCreationBtn: document.getElementById('confirmLightsailCreationBtn'),
@@ -154,6 +155,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const selector = (type === 'ec2') ? UI.ec2TypeSelector : UI.lightsailTypeSelector;
         const spinner = (type === 'ec2') ? UI.ec2Spinner : UI.lightsailSpinner;
         const endpoint = (type === 'ec2') ? `/api/ec2-instance-types?region=${region}` : `/api/lightsail-bundles?region=${region}`;
+        
+        if (type === 'ec2') {
+            UI.ec2DiskSize.value = ''; // 清空上次输入
+        }
+
         modal.show();
         spinner.style.display = 'block';
         selector.innerHTML = '<option>正在加载...</option>';
@@ -168,9 +174,7 @@ document.addEventListener('DOMContentLoaded', function() {
         finally { spinner.style.display = 'none'; }
     };
     
-    // ✨ 这是最终简化版的 createInstance 函数 ✨
     const createInstance = async (type) => {
-        // 直接获取文本域中的脚本内容
         const finalUserData = UI.userData.value;
     
         const payload = {
@@ -179,9 +183,23 @@ document.addEventListener('DOMContentLoaded', function() {
             ...(type === 'ec2' ? { instance_type: UI.ec2TypeSelector.value } : { bundle_id: UI.lightsailTypeSelector.value })
         };
         
+        // 如果是EC2，则检查并添加硬盘大小
+        if (type === 'ec2') {
+            const diskSizeInput = UI.ec2DiskSize.value.trim();
+            if (diskSizeInput) {
+                const diskSize = parseInt(diskSizeInput, 10);
+                if (!isNaN(diskSize) && diskSize > 0) {
+                    payload.disk_size = diskSize;
+                }
+            }
+        }
+
         (type === 'ec2' ? UI.ec2TypeModal : UI.lightsailTypeModal).hide();
         log(`请求在 ${payload.region} 创建 ${type.toUpperCase()} 实例...`);
-        log(`发送的 User Data 脚本:\n${finalUserData}`); // 打印最终脚本以供调试
+        if (payload.disk_size) {
+            log(`自定义硬盘大小: ${payload.disk_size} GB`);
+        }
+        log(`发送的 User Data 脚本:\n${finalUserData}`);
     
         try {
             const data = await apiCall(`/api/instances/${type}`, { 
