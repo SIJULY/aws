@@ -14,16 +14,37 @@ PASSWORD = "1325"
 KEY_FILE = "key.txt"
 QUOTA_CODE = 'L-1216C47A'
 QUOTA_REGION = 'us-east-1'
+# 【已更新】这是包含了所有新区域中文名称的完整字典
 REGION_MAPPING = {
-    "us-east-2": "us-east-2 (美国东部（俄亥俄州）)", "us-east-1": "us-east-1 (美国东部（弗吉尼亚州北部）)",
-    "us-west-1": "us-west-1 (美国西部（加利福尼亚北部）)", "us-west-2": "us-west-2 (美国西部（俄勒冈州）)",
-    "af-south-1": "af-south-1 (非洲（开普敦）)", "ap-east-1": "ap-east-1 (亚太地区（香港）)",
-    "ap-south-1": "ap-south-1 (亚太地区（孟买）)", "ap-northeast-2": "ap-northeast-2 (亚太地区（首尔）)",
-    "ap-southeast-1": "ap-southeast-1 (亚太地区（新加坡）)", "ap-southeast-2": "ap-southeast-2 (亚太地区（悉尼）)",
-    "ap-northeast-1": "ap-northeast-1 (亚太地区（东京）)", "ca-central-1": "ca-central-1 (加拿大（中部）)",
-    "eu-central-1": "eu-central-1 (欧洲地区（法兰кфу）)", "eu-west-1": "eu-west-1 (欧洲地区（爱尔兰）)",
-    "eu-west-2": "eu-west-2 (欧洲地区（伦敦）)", "eu-west-3": "eu-west-3 (欧洲地区（巴黎）)",
-    "eu-north-1": "eu-north-1 (欧洲地区（斯德哥尔摩）)", "sa-east-1": "sa-east-1 (南美洲（圣保罗）)"
+    "af-south-1": "af-south-1 (非洲（开普敦）)",
+    "ap-east-1": "ap-east-1 (亚太地区（香港）)",
+    "ap-northeast-1": "ap-northeast-1 (亚太地区（东京）)",
+    "ap-northeast-2": "ap-northeast-2 (亚太地区（首尔）)",
+    "ap-northeast-3": "ap-northeast-3 (亚太地区（大阪）)",
+    "ap-south-1": "ap-south-1 (亚太地区（孟买）)",
+    "ap-south-2": "ap-south-2 (亚太地区（海得拉巴）)",
+    "ap-southeast-1": "ap-southeast-1 (亚太地区（新加坡）)",
+    "ap-southeast-2": "ap-southeast-2 (亚太地区（悉尼）)",
+    "ap-southeast-3": "ap-southeast-3 (亚太地区（雅加达）)",
+    "ap-southeast-4": "ap-southeast-4 (亚太地区（墨尔本）)",
+    "ca-central-1": "ca-central-1 (加拿大（中部）)",
+    "ca-west-1": "ca-west-1 (加拿大（卡尔加里）)",
+    "eu-central-1": "eu-central-1 (欧洲地区（法兰克福）)",
+    "eu-central-2": "eu-central-2 (欧洲地区（苏黎世）)",
+    "eu-north-1": "eu-north-1 (欧洲地区（斯德哥尔摩）)",
+    "eu-south-1": "eu-south-1 (欧洲地区（米兰）)",
+    "eu-south-2": "eu-south-2 (欧洲地区（西班牙）)",
+    "eu-west-1": "eu-west-1 (欧洲地区（爱尔兰）)",
+    "eu-west-2": "eu-west-2 (欧洲地区（伦敦）)",
+    "eu-west-3": "eu-west-3 (欧洲地区（巴黎）)",
+    "il-central-1": "il-central-1 (以色列（特拉维夫）)",
+    "me-central-1": "me-central-1 (中东（阿联酋）)",
+    "me-south-1": "me-south-1 (中东（巴林）)",
+    "sa-east-1": "sa-east-1 (南美洲（圣保罗）)",
+    "us-east-1": "us-east-1 (美国东部（弗吉尼亚州北部）)",
+    "us-east-2": "us-east-2 (美国东部（俄亥俄州）)",
+    "us-west-1": "us-west-1 (美国西部（加利福尼亚北部）)",
+    "us-west-2": "us-west-2 (美国西部（俄勒冈州）)"
 }
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s:%(name)s:%(message)s')
 task_logs = {}
@@ -66,9 +87,6 @@ def aws_login_required(f):
     return decorated_function
 
 # --- 后台任务 ---
-
-# <<< 新增/修改部分开始 >>>
-
 def create_open_security_group(ec2_client, task_id):
     """为EC2创建或获取一个开放所有端口的安全组"""
     try:
@@ -125,8 +143,8 @@ def configure_lightsail_firewall(lightsail_client, instance_name, task_id):
         # 如果等待超时或发生其他错误，记录日志
         log_task(task_id, f"为实例 {instance_name} 配置防火墙失败: {str(e)}")
 
-
-def create_instance_task(service, task_id, access_key, secret_key, region, instance_type, user_data):
+# 【已修改】增加了 disk_size 参数来处理自定义硬盘
+def create_instance_task(service, task_id, access_key, secret_key, region, instance_type, user_data, disk_size=None):
     log_task(task_id, f"{service.upper()} 任务启动: 区域 {region}, 类型/套餐 {instance_type}")
     try:
         if service == 'ec2':
@@ -141,19 +159,44 @@ def create_instance_task(service, task_id, access_key, secret_key, region, insta
             # 2. 创建或获取开放所有端口的安全组
             security_group_id = create_open_security_group(client, task_id)
             
-            # 3. 运行实例，并应用安全组
-            instance = client.run_instances(
-                ImageId=ami_id,
-                InstanceType=instance_type,
-                MinCount=1,
-                MaxCount=1,
-                UserData=user_data,
-                SecurityGroupIds=[security_group_id]  # 应用开放的安全组
-            )
+            # 3. 准备运行实例的参数
+            run_args = {
+                'ImageId': ami_id,
+                'InstanceType': instance_type,
+                'MinCount': 1,
+                'MaxCount': 1,
+                'UserData': user_data,
+                'SecurityGroupIds': [security_group_id]
+            }
+
+            # 【已修改】处理自定义硬盘大小的逻辑
+            if disk_size:
+                try:
+                    disk_size_int = int(disk_size)
+                    ami_details = client.describe_images(ImageIds=[ami_id])['Images'][0]
+                    root_device_name = ami_details['RootDeviceName']
+                    log_task(task_id, f"获取到根设备名称: {root_device_name}")
+                    log_task(task_id, f"应用自定义硬盘大小: {disk_size_int} GB (gp3类型)")
+                    
+                    run_args['BlockDeviceMappings'] = [
+                        {
+                            'DeviceName': root_device_name,
+                            'Ebs': {
+                                'VolumeSize': disk_size_int,
+                                'VolumeType': 'gp3',
+                                'DeleteOnTermination': True
+                            }
+                        }
+                    ]
+                except (ValueError, KeyError, IndexError) as e:
+                    log_task(task_id, f"警告: 硬盘大小({disk_size})无效或无法获取AMI信息({e})。将使用默认大小。")
+
+            # 4. 运行实例
+            instance = client.run_instances(**run_args)
             instance_id = instance['Instances'][0]['InstanceId']
             log_task(task_id, f"实例请求已发送, ID: {instance_id}")
 
-            # 4. 等待实例运行并获取IP
+            # 5. 等待实例运行并获取IP
             waiter = client.get_waiter('instance_running')
             waiter.wait(InstanceIds=[instance_id])
             desc = client.describe_instances(InstanceIds=[instance_id])
@@ -186,8 +229,6 @@ def create_instance_task(service, task_id, access_key, secret_key, region, insta
 
         log_task(task_id, "--- 任务完成 ---")
     except Exception as e: handle_aws_error(e, task_id)
-
-# <<< 新增/修改部分结束 >>>
 
 def activate_region_task(task_id, access_key, secret_key, region):
     log_task(task_id, f"开始激活区域 {region}...")
@@ -375,14 +416,19 @@ def query_quota():
         return jsonify({"quota": int(quota['Quota']['Value'])})
     except Exception as e: return jsonify({"error": handle_aws_error(e)})
 
+# 【已修改】增加了对 disk_size 的接收和传递
 @app.route("/api/instances/<service>", methods=["POST"])
 @login_required
 @aws_login_required
 def start_create_instance(service):
     data = request.json
     instance_type = data.get("instance_type") if service == 'ec2' else data.get("bundle_id")
+    disk_size = data.get("disk_size") # 新增：获取硬盘大小
     task_id = f"{service}-{int(time.time())}"
-    threading.Thread(target=create_instance_task, args=(service, task_id, g.aws_access_key_id, g.aws_secret_access_key, data["region"], instance_type, data["user_data"])).start()
+    threading.Thread(target=create_instance_task, args=(
+        service, task_id, g.aws_access_key_id, g.aws_secret_access_key, 
+        data["region"], instance_type, data["user_data"], disk_size
+    )).start()
     return jsonify({"success": True, "task_id": task_id})
 
 @app.route("/api/activate-region", methods=["POST"])
