@@ -148,7 +148,7 @@ def configure_lightsail_firewall(lightsail_client, instance_name, task_id):
         # 如果等待超时或发生其他错误，记录日志
         log_task(task_id, f"为实例 {instance_name} 配置防火墙失败: {str(e)}")
 
-# 【已修改】增加了 disk_size 参数来处理自定义硬盘
+
 def create_instance_task(service, task_id, access_key, secret_key, region, instance_type, user_data, disk_size=None):
     log_task(task_id, f"{service.upper()} 任务启动: 区域 {region}, 类型/套餐 {instance_type}")
     try:
@@ -174,7 +174,6 @@ def create_instance_task(service, task_id, access_key, secret_key, region, insta
                 'SecurityGroupIds': [security_group_id]
             }
 
-            # 【已修改】处理自定义硬盘大小的逻辑
             if disk_size:
                 try:
                     disk_size_int = int(disk_size)
@@ -355,12 +354,33 @@ def instance_action():
             elif action == 'stop': client.stop_instances(InstanceIds=[instance_id])
             elif action == 'restart': client.reboot_instances(InstanceIds=[instance_id])
             elif action == 'delete': client.terminate_instances(InstanceIds=[instance_id])
+            # 【新增】处理更换IP的逻辑
+            elif action == 'change-ip':
+                # 1. 查找当前实例是否已关联EIP
+                old_eip = None
+                addrs = client.describe_addresses(Filters=[{'Name': 'instance-id', 'Values': [instance_id]}])
+                if addrs['Addresses']:
+                    old_eip = addrs['Addresses'][0]
+                
+                # 2. 分配一个新的EIP
+                new_eip = client.allocate_address(Domain='vpc')
+                
+                # 3. 将新的EIP关联到实例
+                client.associate_address(InstanceId=instance_id, AllocationId=new_eip['AllocationId'])
+                
+                # 4. 如果存在旧的EIP，则释放它
+                if old_eip:
+                    client.release_address(AllocationId=old_eip['AllocationId'])
+                
+                return jsonify({"success": True, "message": f"实例 {instance_id} 已成功更换 IP 为 {new_eip['PublicIp']}"})
+
         elif instance_type == 'Lightsail':
             client = boto3.client('lightsail', region_name=region, aws_access_key_id=g.aws_access_key_id, aws_secret_access_key=g.aws_secret_access_key, config=get_boto_config())
             if action == 'start': client.start_instance(instanceName=instance_id)
             elif action == 'stop': client.stop_instance(instanceName=instance_id)
             elif action == 'restart': client.reboot_instance(instanceName=instance_id)
             elif action == 'delete': client.delete_instance(instanceName=instance_id)
+        
         return jsonify({"success": True, "message": f"实例 {instance_id} 的 {action} 请求已发送"})
     except Exception as e: return jsonify({"error": handle_aws_error(e)}), 500
 
@@ -421,14 +441,13 @@ def query_quota():
         return jsonify({"quota": int(quota['Quota']['Value'])})
     except Exception as e: return jsonify({"error": handle_aws_error(e)})
 
-# 【已修改】增加了对 disk_size 的接收和传递
 @app.route("/api/instances/<service>", methods=["POST"])
 @login_required
 @aws_login_required
 def start_create_instance(service):
     data = request.json
     instance_type = data.get("instance_type") if service == 'ec2' else data.get("bundle_id")
-    disk_size = data.get("disk_size") # 新增：获取硬盘大小
+    disk_size = data.get("disk_size") 
     task_id = f"{service}-{int(time.time())}"
     threading.Thread(target=create_instance_task, args=(
         service, task_id, g.aws_access_key_id, g.aws_secret_access_key, 
