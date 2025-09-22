@@ -14,10 +14,11 @@ PASSWORD = "1325"
 KEY_FILE = "key.txt"
 QUOTA_CODE = 'L-1216C47A'
 QUOTA_REGION = 'us-east-1'
-# 【已更新】这是包含了所有新区域中文名称的完整字典
+# 【最终正确版】这是包含了所有新区域中文名称的完整字典
 REGION_MAPPING = {
     "af-south-1": "af-south-1 (非洲（开普敦）)",
     "ap-east-1": "ap-east-1 (亚太地区（香港）)",
+    "ap-east-2": "ap-east-2 (亚太地区（台北）)",
     "ap-northeast-1": "ap-northeast-1 (亚太地区（东京）)",
     "ap-northeast-2": "ap-northeast-2 (亚太地区（首尔）)",
     "ap-northeast-3": "ap-northeast-3 (亚太地区（大阪）)",
@@ -27,6 +28,9 @@ REGION_MAPPING = {
     "ap-southeast-2": "ap-southeast-2 (亚太地区（悉尼）)",
     "ap-southeast-3": "ap-southeast-3 (亚太地区（雅加达）)",
     "ap-southeast-4": "ap-southeast-4 (亚太地区（墨尔本）)",
+    "ap-southeast-5": "ap-southeast-5 (亚太地区（奥克兰）)",
+    "ap-southeast-6": "ap-southeast-6 (亚太地区（马尼拉）)",
+    "ap-southeast-7": "ap-southeast-7 (亚太地区（曼谷）)",
     "ca-central-1": "ca-central-1 (加拿大（中部）)",
     "ca-west-1": "ca-west-1 (加拿大（卡尔加里）)",
     "eu-central-1": "eu-central-1 (欧洲地区（法兰克福）)",
@@ -40,6 +44,7 @@ REGION_MAPPING = {
     "il-central-1": "il-central-1 (以色列（特拉维夫）)",
     "me-central-1": "me-central-1 (中东（阿联酋）)",
     "me-south-1": "me-south-1 (中东（巴林）)",
+    "mx-central-1": "mx-central-1 (墨西哥（克雷塔罗）)",
     "sa-east-1": "sa-east-1 (南美洲（圣保罗）)",
     "us-east-1": "us-east-1 (美国东部（弗吉尼亚州北部）)",
     "us-east-2": "us-east-2 (美国东部（俄亥俄州）)",
