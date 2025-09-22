@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', function() {
         ec2TypeModal: new bootstrap.Modal(document.getElementById('ec2TypeModal')),
         lightsailTypeModal: new bootstrap.Modal(document.getElementById('lightsailTypeModal')),
         ec2TypeSelector: document.getElementById('ec2TypeSelector'),
-        ec2DiskSize: document.getElementById('ec2DiskSize'), // 新增：EC2硬盘大小输入框
+        ec2DiskSize: document.getElementById('ec2DiskSize'), 
         lightsailTypeSelector: document.getElementById('lightsailTypeSelector'),
         confirmEc2CreationBtn: document.getElementById('confirmEc2CreationBtn'),
         confirmLightsailCreationBtn: document.getElementById('confirmLightsailCreationBtn'),
@@ -90,11 +90,18 @@ document.addEventListener('DOMContentLoaded', function() {
         row.dataset.state = inst.state;
         const isRunning = inst.state === 'running';
         const isStopped = inst.state === 'stopped';
+        
+        // 【新增】仅当实例是EC2且正在运行时，才显示更换IP按钮
+        const changeIpButton = (inst.type === 'EC2' && isRunning)
+            ? `<button type="button" class="btn btn-info" data-action="change-ip">更换IP</button>`
+            : '';
+
         const buttonsHTML = `
             <div class="btn-group btn-group-sm" role="group">
                 <button type="button" class="btn btn-success" data-action="start" ${!isStopped ? 'disabled' : ''}>启动</button>
                 <button type="button" class="btn btn-warning" data-action="stop" ${!isRunning ? 'disabled' : ''}>停止</button>
                 <button type="button" class="btn btn-secondary" data-action="restart" ${!isRunning ? 'disabled' : ''}>重启</button>
+                ${changeIpButton}
                 <button type="button" class="btn btn-danger" data-action="delete" ${inst.type === 'EC2' && isRunning ? 'disabled' : ''}>删除</button>
             </div>`;
         row.innerHTML = `
@@ -183,7 +190,6 @@ document.addEventListener('DOMContentLoaded', function() {
             ...(type === 'ec2' ? { instance_type: UI.ec2TypeSelector.value } : { bundle_id: UI.lightsailTypeSelector.value })
         };
         
-        // 如果是EC2，则检查并添加硬盘大小
         if (type === 'ec2') {
             const diskSizeInput = UI.ec2DiskSize.value.trim();
             if (diskSizeInput) {
@@ -340,6 +346,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const confirmText = {
             start: `确定要启动实例 ${instance.name}?`, stop: `确定要停止实例 ${instance.name}?`,
             restart: `确定要重启实例 ${instance.name}?`, delete: `【警告】此操作不可恢复！确定要永久删除实例 ${instance.name} 吗?`,
+            'change-ip': `确定要为实例 ${instance.name} 分配一个新的IP地址吗？这会产生少量费用，并自动释放旧IP。`
         };
         if (!confirm(confirmText[action])) return;
         log(`正在对实例 ${instance.name} 执行 ${action} 操作...`);
@@ -362,9 +369,6 @@ document.addEventListener('DOMContentLoaded', function() {
     UI.confirmLightsailCreationBtn.addEventListener('click', () => createInstance('lightsail'));
     UI.clearLogBtn.addEventListener('click', () => { UI.logOutput.innerHTML = ''; });
     
-    // This event listener is no longer needed as the toggle button was removed.
-    // UI.togglePassword.addEventListener('click', () => { ... });
-
     // --- 初始化 ---
     updateAwsLoginStatus();
 });
