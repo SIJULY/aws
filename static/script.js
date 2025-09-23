@@ -29,7 +29,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let logPollingInterval = null;
     let currentPage = 1; 
 
-    // --- 辅助函数 (无变化) ---
+    // --- 辅助函数 ---
     const log = (message, type = 'info') => {
         const now = new Date().toLocaleTimeString();
         const colorClass = type === 'error' ? 'text-danger' : (type === 'success' ? 'text-success' : '');
@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) { log(error.message, 'error'); throw error; }
     };
     
-    // ... (其他辅助函数等保持不变) ...
+    // ... 其他辅助函数 ...
     const startLogPolling = (taskId, isQueryAll = false) => {
         if (logPollingInterval) clearInterval(logPollingInterval);
         log(`任务 ${taskId} 已启动...`);
@@ -130,6 +130,8 @@ document.addEventListener('DOMContentLoaded', function() {
         paginationHTML += '</ul>';
         UI.paginationNav.innerHTML = paginationHTML;
     };
+    
+    // 【已修改】增加 Bedrock 配额列的渲染
     const loadAndRenderAccounts = async (page = 1) => {
         try {
             const data = await apiCall(`/api/accounts?page=${page}&limit=5`);
@@ -139,20 +141,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 <tr data-account-name="${acc.name}">
                     <td>${acc.name}</td>
                     <td class="quota-cell text-center">--</td>
+                    <td class="bedrock-quota-cell text-center">--</td>
                     <td class="text-center">
                         <div class="btn-group btn-group-sm">
                             <button class="btn btn-success" data-action="select">选择</button>
-                            <button class="btn btn-info" data-action="query-quota">查配额</button>
+                            <button class="btn btn-info" data-action="query-quota">查vCPU</button>
+                            <button class="btn btn-primary" data-action="query-bedrock-quota">查Bedrock</button>
                             <button class="btn btn-danger" data-action="delete">删除</button>
                         </div>
                     </td>
-                </tr>`).join('') : '<tr><td colspan="3" class="text-center">没有已保存的账户</td></tr>';
+                </tr>`).join('') : '<tr><td colspan="4" class="text-center">没有已保存的账户</td></tr>';
             renderPagination(data.total_pages, data.current_page);
             updateAwsLoginStatus();
         } catch (error) {
-            UI.accountList.innerHTML = '<tr><td colspan="3" class="text-center text-danger">加载账户列表失败</td></tr>';
+            UI.accountList.innerHTML = '<tr><td colspan="4" class="text-center text-danger">加载账户列表失败</td></tr>';
         }
     };
+    
     const updateAwsLoginStatus = async () => {
         try {
             const data = await apiCall('/api/session');
@@ -167,27 +172,21 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         } catch (error) { setUIState(false); }
     };
-
-    // 【已修改】loadRegions函数，增加设置默认值逻辑
     const loadRegions = async () => {
         log('正在加载区域列表...');
         try {
             const regions = await apiCall('/api/regions');
             if (!regions) return;
             UI.regionSelector.innerHTML = regions.map(r => `<option value="${r.code}" data-enabled="${r.enabled}">${r.name} ${r.enabled ? '' : '(未激活)'}</option>`).join('');
-            
-            // 检查 us-east-1 是否存在于选项中，如果存在则设为默认值
             const defaultRegion = 'us-east-1';
             const optionExists = Array.from(UI.regionSelector.options).some(opt => opt.value === defaultRegion);
             if (optionExists) {
                 UI.regionSelector.value = defaultRegion;
             }
-            
             log('区域列表加载成功。', 'success');
             UI.regionSelector.dispatchEvent(new Event('change'));
         } catch (error) { /* handled */ }
     };
-
     const openInstanceTypeModal = async (type) => {
         const region = UI.regionSelector.value;
         const modal = (type === 'ec2') ? UI.ec2TypeModal : UI.lightsailTypeModal;
@@ -237,28 +236,54 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!region) { log('请先在下方“操作区域”中选择一个区域再查询配额。', 'error'); return; }
         const quotaCell = row.querySelector('.quota-cell');
         quotaCell.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
-        log(`正在为账户 ${accountName} 查询区域 ${region} 的配额...`);
+        log(`正在为账户 ${accountName} 查询区域 ${region} 的 vCPU 配额...`);
         try {
             const data = await apiCall('/api/query-quota', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account_name: accountName, region: region }) });
             if (data && data.quota !== undefined) {
                 quotaCell.textContent = data.quota; 
                 quotaCell.classList.add('fw-bold');
-                log(`账户 ${accountName} 在区域 ${region} 的配额为: ${data.quota}`, 'success');
+                log(`账户 ${accountName} 在区域 ${region} 的 vCPU 配额为: ${data.quota}`, 'success');
             } else {
                 quotaCell.textContent = `错误`;
-                log(`账户 ${accountName} 的配额查询未能返回有效数据。`, 'error');
+                log(`账户 ${accountName} 的 vCPU 配额查询未能返回有效数据。`, 'error');
+            }
+        } catch (error) { 
+            quotaCell.textContent = '查询失败'; 
+        }
+    };
+    
+    // 【新增】查询 Bedrock 配额的函数
+    const queryBedrockQuota = async (accountName, region) => {
+        const row = UI.accountList.querySelector(`tr[data-account-name="${accountName}"]`);
+        if (!row) return;
+        if (!region) { log('请先在下方“操作区域”中选择一个区域再查询配额。', 'error'); return; }
+        const quotaCell = row.querySelector('.bedrock-quota-cell');
+        quotaCell.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
+        log(`正在为账户 ${accountName} 查询区域 ${region} 的 Bedrock 配额...`);
+        try {
+            const data = await apiCall('/api/query-bedrock-quota', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account_name: accountName, region: region }) });
+            if (data && data.quota !== undefined) {
+                quotaCell.textContent = data.quota; 
+                quotaCell.classList.add('fw-bold');
+                log(`账户 ${accountName} 在区域 ${region} 的 Bedrock 配额为: ${data.quota}`, 'success');
+            } else {
+                quotaCell.textContent = `错误`;
+                log(`账户 ${accountName} 的 Bedrock 配额查询未能返回有效数据。`, 'error');
             }
         } catch (error) { 
             quotaCell.textContent = '查询失败'; 
         }
     };
 
+
     // --- 事件监听 ---
+    // 【已修改】账户列表事件监听，增加 query-bedrock-quota 动作
     UI.accountList.addEventListener('click', async (event) => {
         const button = event.target.closest('button[data-action]');
         if (!button) return;
         const action = button.dataset.action;
         const accountName = button.closest('tr').dataset.accountName;
+        
         if (action === 'select') {
             log(`正在选择AWS账户 ${accountName}...`);
             await apiCall('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: accountName }) });
@@ -272,6 +297,9 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (action === 'query-quota') {
             const region = UI.regionSelector.value;
             queryQuota(accountName, region);
+        } else if (action === 'query-bedrock-quota') {
+            const region = UI.regionSelector.value;
+            queryBedrockQuota(accountName, region);
         }
     });
 
@@ -300,13 +328,19 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
+    // 【已修改】一键查询按钮，同时查询两种配额
     UI.queryAllQuotasBtn.addEventListener('click', () => {
         const region = UI.regionSelector.value;
         if (!region || UI.regionSelector.disabled) { log('请先选择一个账户和一个区域再执行此操作。', 'error'); return; }
-        log(`开始为所有账户查询区域 ${region} 的配额...`);
+        log(`开始为所有账户查询区域 ${region} 的 vCPU 和 Bedrock 配额...`);
         const rows = UI.accountList.querySelectorAll('tr[data-account-name]');
-        rows.forEach(row => { queryQuota(row.dataset.accountName, region); });
+        rows.forEach(row => {
+            const accountName = row.dataset.accountName;
+            queryQuota(accountName, region);
+            queryBedrockQuota(accountName, region);
+        });
     });
+
     UI.regionSelector.addEventListener('change', () => {
         const selectedOption = UI.regionSelector.options[UI.regionSelector.selectedIndex];
         if (selectedOption) {
