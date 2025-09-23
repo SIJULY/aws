@@ -24,10 +24,12 @@ document.addEventListener('DOMContentLoaded', function() {
         confirmLightsailCreationBtn: document.getElementById('confirmLightsailCreationBtn'),
         ec2Spinner: document.getElementById('ec2Spinner'),
         lightsailSpinner: document.getElementById('lightsailSpinner'),
+        paginationNav: document.getElementById('pagination-nav'), // 【新增】翻页容器
     };
     let logPollingInterval = null;
+    let currentPage = 1; // 【新增】用于跟踪当前页码
 
-    // --- 辅助函数 ---
+    // --- 辅助函数 (无变化) ---
     const log = (message, type = 'info') => {
         const now = new Date().toLocaleTimeString();
         const colorClass = type === 'error' ? 'text-danger' : (type === 'success' ? 'text-success' : '');
@@ -52,7 +54,8 @@ document.addEventListener('DOMContentLoaded', function() {
             return await response.json();
         } catch (error) { log(error.message, 'error'); throw error; }
     };
-
+    
+    // ... (其他辅助函数如 startLogPolling, renderInstanceRow 等保持不变, 为确保完整性，此处全部粘贴) ...
     const startLogPolling = (taskId, isQueryAll = false) => {
         if (logPollingInterval) clearInterval(logPollingInterval);
         log(`任务 ${taskId} 已启动...`);
@@ -78,7 +81,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 2500);
     };
 
-    // 【已修正】重新加入更换IP按钮的 renderInstanceRow 函数
     const renderInstanceRow = (inst) => {
         const row = document.createElement('tr');
         row.dataset.id = inst.id;
@@ -88,18 +90,16 @@ document.addEventListener('DOMContentLoaded', function() {
         row.dataset.state = inst.state;
         const isRunning = inst.state === 'running';
         const isStopped = inst.state === 'stopped';
-
         const changeIpButton = (inst.type === 'EC2' && isRunning)
-            ? `<button type="button" class="btn btn-info btn-sm" data-action="change-ip">更换IP</button>`
+            ? `<button type="button" class="btn btn-info btn-sm" data-action="change-ip" style="white-space: nowrap;">更换IP</button>`
             : '';
-
         const buttonsHTML = `
             <div class="btn-group btn-group-sm" role="group">
-                <button type="button" class="btn btn-success" data-action="start" ${!isStopped ? 'disabled' : ''}>启动</button>
-                <button type="button" class="btn btn-warning" data-action="stop" ${!isRunning ? 'disabled' : ''}>停止</button>
-                <button type="button" class="btn btn-secondary" data-action="restart" ${!isRunning ? 'disabled' : ''}>重启</button>
+                <button type="button" class="btn btn-success" data-action="start" style="white-space: nowrap;" ${!isStopped ? 'disabled' : ''}>启动</button>
+                <button type="button" class="btn btn-warning" data-action="stop" style="white-space: nowrap;" ${!isRunning ? 'disabled' : ''}>停止</button>
+                <button type="button" class="btn btn-secondary" data-action="restart" style="white-space: nowrap;" ${!isRunning ? 'disabled' : ''}>重启</button>
                 ${changeIpButton}
-                <button type="button" class="btn btn-danger" data-action="delete" ${inst.type === 'EC2' && isRunning ? 'disabled' : ''}>删除</button>
+                <button type="button" class="btn btn-danger" data-action="delete" style="white-space: nowrap;" ${inst.type === 'EC2' && isRunning ? 'disabled' : ''}>删除</button>
             </div>`;
         row.innerHTML = `
             <td><span class="badge bg-${inst.type === 'EC2' ? 'success' : 'info'}">${inst.type}</span></td>
@@ -118,12 +118,40 @@ document.addEventListener('DOMContentLoaded', function() {
         UI.activateRegionBtn.disabled = true;
     };
     
-    const loadAndRenderAccounts = async () => {
+    // 【新增】渲染翻页按钮的函数
+    const renderPagination = (totalPages, currentPage) => {
+        UI.paginationNav.innerHTML = '';
+        if (totalPages <= 1) return;
+
+        let paginationHTML = '<ul class="pagination pagination-sm">';
+        
+        // 上一页按钮
+        paginationHTML += `<li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+            <a class="page-link" href="#" data-page="${currentPage - 1}">‹</a></li>`;
+        
+        // 页面数字按钮
+        for (let i = 1; i <= totalPages; i++) {
+            paginationHTML += `<li class="page-item ${i === currentPage ? 'active' : ''}">
+                <a class="page-link" href="#" data-page="${i}">${i}</a></li>`;
+        }
+        
+        // 下一页按钮
+        paginationHTML += `<li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+            <a class="page-link" href="#" data-page="${currentPage + 1}">›</a></li>`;
+
+        paginationHTML += '</ul>';
+        UI.paginationNav.innerHTML = paginationHTML;
+    };
+
+    // 【改版】加载并渲染账户列表（支持翻页）
+    const loadAndRenderAccounts = async (page = 1) => {
         try {
-            const accounts = await apiCall('/api/accounts');
-            if (!accounts) return;
-            accounts.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
-            UI.accountList.innerHTML = accounts.length ? accounts.map(acc => `
+            const data = await apiCall(`/api/accounts?page=${page}&limit=6`);
+            if (!data) return;
+
+            currentPage = data.current_page;
+            
+            UI.accountList.innerHTML = data.accounts.length ? data.accounts.map(acc => `
                 <tr data-account-name="${acc.name}">
                     <td>${acc.name}</td>
                     <td class="quota-cell text-center">--</td>
@@ -135,10 +163,15 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                     </td>
                 </tr>`).join('') : '<tr><td colspan="3" class="text-center">没有已保存的账户</td></tr>';
+            
+            renderPagination(data.total_pages, data.current_page);
             updateAwsLoginStatus();
-        } catch (error) { /* handled */ }
+        } catch (error) {
+            UI.accountList.innerHTML = '<tr><td colspan="3" class="text-center text-danger">加载账户列表失败</td></tr>';
+        }
     };
-
+    
+    // ... (其他函数如 updateAwsLoginStatus, loadRegions 等保持不变, 为确保完整性，此处全部粘贴) ...
     const updateAwsLoginStatus = async () => {
         try {
             const data = await apiCall('/api/session');
@@ -153,7 +186,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         } catch (error) { setUIState(false); }
     };
-
     const loadRegions = async () => {
         log('正在加载区域列表...');
         try {
@@ -164,18 +196,13 @@ document.addEventListener('DOMContentLoaded', function() {
             UI.regionSelector.dispatchEvent(new Event('change'));
         } catch (error) { /* handled */ }
     };
-
     const openInstanceTypeModal = async (type) => {
         const region = UI.regionSelector.value;
         const modal = (type === 'ec2') ? UI.ec2TypeModal : UI.lightsailTypeModal;
         const selector = (type === 'ec2') ? UI.ec2TypeSelector : UI.lightsailTypeSelector;
         const spinner = (type === 'ec2') ? UI.ec2Spinner : UI.lightsailSpinner;
         const endpoint = (type === 'ec2') ? `/api/ec2-instance-types?region=${region}` : `/api/lightsail-bundles?region=${region}`;
-        
-        if (type === 'ec2') {
-            UI.ec2DiskSize.value = '';
-        }
-
+        if (type === 'ec2') { UI.ec2DiskSize.value = ''; }
         modal.show();
         spinner.style.display = 'block';
         selector.innerHTML = '<option>正在加载...</option>';
@@ -189,60 +216,38 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) { selector.innerHTML = `<option>加载失败: ${error.message}</option>`; }
         finally { spinner.style.display = 'none'; }
     };
-    
     const createInstance = async (type) => {
         const finalUserData = UI.userData.value;
-    
         const payload = {
             region: UI.regionSelector.value,
             user_data: finalUserData,
             ...(type === 'ec2' ? { instance_type: UI.ec2TypeSelector.value } : { bundle_id: UI.lightsailTypeSelector.value })
         };
-        
         if (type === 'ec2') {
             const diskSizeInput = UI.ec2DiskSize.value.trim();
             if (diskSizeInput) {
                 const diskSize = parseInt(diskSizeInput, 10);
-                if (!isNaN(diskSize) && diskSize > 0) {
-                    payload.disk_size = diskSize;
-                }
+                if (!isNaN(diskSize) && diskSize > 0) { payload.disk_size = diskSize; }
             }
         }
-
         (type === 'ec2' ? UI.ec2TypeModal : UI.lightsailTypeModal).hide();
         log(`请求在 ${payload.region} 创建 ${type.toUpperCase()} 实例...`);
-        if (payload.disk_size) {
-            log(`自定义硬盘大小: ${payload.disk_size} GB`);
-        }
+        if (payload.disk_size) { log(`自定义硬盘大小: ${payload.disk_size} GB`); }
         log(`发送的 User Data 脚本:\n${finalUserData}`);
-    
         try {
-            const data = await apiCall(`/api/instances/${type}`, { 
-                method: 'POST', 
-                headers: { 'Content-Type': 'application/json' }, 
-                body: JSON.stringify(payload) 
-            });
+            const data = await apiCall(`/api/instances/${type}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             if (data && data.task_id) startLogPolling(data.task_id);
         } catch (error) { /* apiCall函数已处理日志 */ }
     };
-
     const queryQuota = async (accountName, region) => {
         const row = UI.accountList.querySelector(`tr[data-account-name="${accountName}"]`);
         if (!row) return;
-        
-        if (!region) {
-            log('请先在下方“操作区域”中选择一个区域再查询配额。', 'error');
-            return;
-        }
-
+        if (!region) { log('请先在下方“操作区域”中选择一个区域再查询配额。', 'error'); return; }
         const quotaCell = row.querySelector('.quota-cell');
         quotaCell.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
         log(`正在为账户 ${accountName} 查询区域 ${region} 的配额...`);
         try {
-            const data = await apiCall('/api/query-quota', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ account_name: accountName, region: region })
-            });
+            const data = await apiCall('/api/query-quota', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account_name: accountName, region: region }) });
             if (data && data.quota !== undefined) {
                 quotaCell.textContent = data.quota; 
                 quotaCell.classList.add('fw-bold');
@@ -262,7 +267,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!button) return;
         const action = button.dataset.action;
         const accountName = button.closest('tr').dataset.accountName;
-        
         if (action === 'select') {
             log(`正在选择AWS账户 ${accountName}...`);
             await apiCall('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: accountName }) });
@@ -272,7 +276,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!confirm(`确定要删除AWS账户 ${accountName} 吗？`)) return;
             await apiCall(`/api/accounts/${accountName}`, { method: 'DELETE' });
             log(`AWS账户 ${accountName} 删除成功。`, 'success');
-            loadAndRenderAccounts();
+            loadAndRenderAccounts(1); // 删除后回到第一页
         } else if (action === 'query-quota') {
             const region = UI.regionSelector.value;
             queryQuota(accountName, region);
@@ -289,21 +293,30 @@ document.addEventListener('DOMContentLoaded', function() {
             await apiCall('/api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, access_key, secret_key }) });
             log(`账户 ${name} 添加成功。`, 'success');
             form.reset();
-            loadAndRenderAccounts();
+            loadAndRenderAccounts(1); // 保存后回到第一页
         } catch (error) { alert(`添加失败: ${error.message}`); }
     });
+    
+    // 【新增】为翻页按钮添加事件委托
+    UI.paginationNav.addEventListener('click', (event) => {
+        event.preventDefault();
+        const link = event.target.closest('a.page-link');
+        if (link) {
+            const page = parseInt(link.dataset.page, 10);
+            if (!isNaN(page)) {
+                loadAndRenderAccounts(page);
+            }
+        }
+    });
 
+    // ... (其他事件监听保持不变) ...
     UI.queryAllQuotasBtn.addEventListener('click', () => {
         const region = UI.regionSelector.value;
-        if (!region || UI.regionSelector.disabled) {
-             log('请先选择一个账户和一个区域再执行此操作。', 'error');
-             return;
-        }
+        if (!region || UI.regionSelector.disabled) { log('请先选择一个账户和一个区域再执行此操作。', 'error'); return; }
         log(`开始为所有账户查询区域 ${region} 的配额...`);
         const rows = UI.accountList.querySelectorAll('tr[data-account-name]');
         rows.forEach(row => { queryQuota(row.dataset.accountName, region); });
     });
-
     UI.regionSelector.addEventListener('change', () => {
         const selectedOption = UI.regionSelector.options[UI.regionSelector.selectedIndex];
         if (selectedOption) {
@@ -318,7 +331,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
-
     UI.activateRegionBtn.addEventListener('click', async () => {
         const region = UI.regionSelector.value;
         if (!region || UI.activateRegionBtn.disabled) return;
@@ -328,7 +340,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if(data && data.task_id) startLogPolling(data.task_id);
         } catch(e) {}
     });
-
     UI.querySelectedRegionBtn.addEventListener('click', async () => {
         const region = UI.regionSelector.value;
         log(`正在查询区域 ${region} 的实例...`);
@@ -344,7 +355,6 @@ document.addEventListener('DOMContentLoaded', function() {
             log(`区域 ${region} 查询完成。`, 'success');
         } catch(error) { UI.instanceList.innerHTML = `<tr><td colspan="6" class="text-center text-danger">查询失败: ${error.message}</td></tr>`; }
     });
-
     UI.queryAllRegionsBtn.addEventListener('click', async () => {
         log("即将查询所有区域，过程可能较慢，请稍候...");
         try {
@@ -352,8 +362,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if(data && data.task_id) startLogPolling(data.task_id, true);
         } catch(error) { /* handled */ }
     });
-
-    // 【已修正】重新加入更换IP逻辑的事件监听
     UI.instanceList.addEventListener('click', async (event) => {
         const button = event.target.closest('button[data-action]');
         if (!button || button.disabled) return;
@@ -365,7 +373,7 @@ document.addEventListener('DOMContentLoaded', function() {
             restart: `确定要重启实例 ${instance.name}?`, delete: `【警告】此操作不可恢复！确定要永久删除实例 ${instance.name} 吗?`,
             'change-ip': `确定要为实例 ${instance.name} 分配一个新的IP地址吗？这会产生少量费用，并自动释放旧IP。`
         };
-        if (!confirm(confirmText[action])) return;
+        if (confirmText[action] && !confirm(confirmText[action])) return;
         log(`正在对实例 ${instance.name} 执行 ${action} 操作...`);
         button.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
         button.disabled = true;
@@ -376,13 +384,11 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             if (!response) return;
             log(response.message, 'success');
-            // 刷新列表以显示更新后的状态或IP
             setTimeout(() => { UI.querySelectedRegionBtn.dispatchEvent(new Event('click')); }, 3000);
         } catch(error) { 
             setTimeout(() => { UI.querySelectedRegionBtn.dispatchEvent(new Event('click')); }, 500); 
         }
     });
-
     UI.createEc2Btn.addEventListener('click', () => openInstanceTypeModal('ec2'));
     UI.createLsBtn.addEventListener('click', () => openInstanceTypeModal('lightsail'));
     UI.confirmEc2CreationBtn.addEventListener('click', () => createInstance('ec2'));
