@@ -63,7 +63,7 @@
                                     <tr>
                                         <th>账户名称</th>
                                         <th class="text-center">vCPU配额</th>
-                                        <th class="text-center">Bedrock配额</th>
+                                        <th class="text-center">Bedrock状态</th>
                                         <th class="text-center">操作</th>
                                     </tr>
                                 </thead>
@@ -88,7 +88,12 @@
                 <div class="row g-3 align-items-center mb-3">
                     <div class="col-auto"><label for="regionSelector" class="col-form-label">选择区域:</label></div>
                     <div class="col"><select class="form-select" id="regionSelector" disabled><option>请先选择AWS账户</option></select></div>
-                    <div class="col-auto"><button id="activateRegionBtn" class="btn btn-secondary" disabled>激活此区域</button></div>
+                    <div class="col-auto">
+                        <div class="btn-group">
+                            <button id="gotoBedrockBtn" class="btn btn-sm btn-outline-primary" disabled>前往Bedrock控制台</button>
+                            <button id="activateRegionBtn" class="btn btn-sm btn-secondary" disabled>激活此区域</button>
+                        </div>
+                    </div>
                 </div>
                 <h6>创建实例</h6>
                 <div class="btn-group w-100 mb-3">
