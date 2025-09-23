@@ -13,8 +13,7 @@ PASSWORD = "1325"
 # --- 常量定义 ---
 KEY_FILE = "key.txt"
 QUOTA_CODE = 'L-1216C47A'
-QUOTA_REGION = 'us-east-1'
-# 【最终正确版】这是包含了所有新区域中文名称的完整字典
+QUOTA_REGION = 'us-east-1' # 保留作为备用
 REGION_MAPPING = {
     "af-south-1": "af-south-1 (非洲（开普敦）)",
     "ap-east-1": "ap-east-1 (亚太地区（香港）)",
@@ -32,12 +31,12 @@ REGION_MAPPING = {
     "ap-southeast-6": "ap-southeast-6 (亚太地区（马尼拉）)",
     "ap-southeast-7": "ap-southeast-7 (亚太地区（曼谷）)",
     "ca-central-1": "ca-central-1 (加拿大（中部）)",
-    "ca-west-1": "ca-west-1 (加拿大（卡尔加里）)",
+    "ca-west-1": "ca-west-1 (加拿大西部（卡尔加里）)",
     "eu-central-1": "eu-central-1 (欧洲地区（法兰克福）)",
-    "eu-central-2": "eu-central-2 (欧洲地区（苏黎世）)",
+    "eu-central-2": "eu-central-2 (欧洲（苏黎世）)",
     "eu-north-1": "eu-north-1 (欧洲地区（斯德哥尔摩）)",
     "eu-south-1": "eu-south-1 (欧洲地区（米兰）)",
-    "eu-south-2": "eu-south-2 (欧洲地区（西班牙）)",
+    "eu-south-2": "eu-south-2 (欧洲（西班牙）)",
     "eu-west-1": "eu-west-1 (欧洲地区（爱尔兰）)",
     "eu-west-2": "eu-west-2 (欧洲地区（伦敦）)",
     "eu-west-3": "eu-west-3 (欧洲地区（巴黎）)",
@@ -93,30 +92,16 @@ def aws_login_required(f):
 
 # --- 后台任务 ---
 def create_open_security_group(ec2_client, task_id):
-    """为EC2创建或获取一个开放所有端口的安全组"""
     try:
-        # 获取默认VPC ID
         vpcs = ec2_client.describe_vpcs(Filters=[{'Name': 'isDefault', 'Values': ['true']}])
-        if not vpcs['Vpcs']:
-            raise Exception("未找到默认VPC。")
+        if not vpcs['Vpcs']: raise Exception("未找到默认VPC。")
         default_vpc_id = vpcs['Vpcs'][0]['VpcId']
-
-        # 尝试创建安全组
         group_name = 'OpenAllPorts'
         log_task(task_id, f"正在创建名为 {group_name} 的安全组...")
-        response = ec2_client.create_security_group(
-            GroupName=group_name,
-            Description='Security group to allow all traffic',
-            VpcId=default_vpc_id
-        )
+        response = ec2_client.create_security_group(GroupName=group_name, Description='Security group to allow all traffic', VpcId=default_vpc_id)
         security_group_id = response['GroupId']
         log_task(task_id, f"安全组 {security_group_id} 创建成功。正在配置入站规则...")
-
-        # 添加入站规则，允许所有流量
-        ec2_client.authorize_security_group_ingress(
-            GroupId=security_group_id,
-            IpPermissions=[{'IpProtocol': '-1', 'IpRanges': [{'CidrIp': '0.0.0.0/0'}]}]
-        )
+        ec2_client.authorize_security_group_ingress(GroupId=security_group_id, IpPermissions=[{'IpProtocol': '-1', 'IpRanges': [{'CidrIp': '0.0.0.0/0'}]}])
         log_task(task_id, f"安全组规则配置完成，允许所有端口访问。")
         return security_group_id
     except ClientError as e:
@@ -126,54 +111,30 @@ def create_open_security_group(ec2_client, task_id):
             security_group_id = groups['SecurityGroups'][0]['GroupId']
             log_task(task_id, f"已获取存在的安全组ID: {security_group_id}")
             return security_group_id
-        else:
-            raise e
+        else: raise e
 
 def configure_lightsail_firewall(lightsail_client, instance_name, task_id):
-    """为Lightsail实例开放所有端口"""
     try:
-        # 等待实例进入可操作状态
         log_task(task_id, f"等待实例 {instance_name} 进入可操作状态...")
         waiter = lightsail_client.get_waiter('instance_running')
-        waiter.wait(instanceName=instance_name, WaiterConfig={'Delay': 15, 'MaxAttempts': 20}) # 等待最长5分钟
+        waiter.wait(instanceName=instance_name, WaiterConfig={'Delay': 15, 'MaxAttempts': 20})
         log_task(task_id, f"实例 {instance_name} 已运行，正在配置防火墙...")
-
-        # 配置防火墙规则
-        lightsail_client.put_instance_public_ports(
-            instanceName=instance_name,
-            portInfos=[{'fromPort': 0, 'toPort': 65535, 'protocol': 'all'}]
-        )
+        lightsail_client.put_instance_public_ports(instanceName=instance_name, portInfos=[{'fromPort': 0, 'toPort': 65535, 'protocol': 'all'}])
         log_task(task_id, f"成功为实例 {instance_name} 配置防火墙，开放所有端口。")
     except Exception as e:
-        # 如果等待超时或发生其他错误，记录日志
         log_task(task_id, f"为实例 {instance_name} 配置防火墙失败: {str(e)}")
-
 
 def create_instance_task(service, task_id, access_key, secret_key, region, instance_type, user_data, disk_size=None):
     log_task(task_id, f"{service.upper()} 任务启动: 区域 {region}, 类型/套餐 {instance_type}")
     try:
         if service == 'ec2':
             client = boto3.client('ec2', region_name=region, aws_access_key_id=access_key, aws_secret_access_key=secret_key, config=get_boto_config())
-            
-            # 1. 获取AMI
             images = client.describe_images(Owners=['136693071363'], Filters=[{'Name': 'name', 'Values': ['debian-12-amd64-*']}, {'Name': 'state', 'Values': ['available']}])
             if not images['Images']: raise Exception("未找到Debian 12的AMI")
             ami_id = sorted(images['Images'], key=lambda x: x['CreationDate'], reverse=True)[0]['ImageId']
             log_task(task_id, f"使用AMI: {ami_id}")
-            
-            # 2. 创建或获取开放所有端口的安全组
             security_group_id = create_open_security_group(client, task_id)
-            
-            # 3. 准备运行实例的参数
-            run_args = {
-                'ImageId': ami_id,
-                'InstanceType': instance_type,
-                'MinCount': 1,
-                'MaxCount': 1,
-                'UserData': user_data,
-                'SecurityGroupIds': [security_group_id]
-            }
-
+            run_args = {'ImageId': ami_id, 'InstanceType': instance_type, 'MinCount': 1, 'MaxCount': 1, 'UserData': user_data, 'SecurityGroupIds': [security_group_id]}
             if disk_size:
                 try:
                     disk_size_int = int(disk_size)
@@ -181,56 +142,28 @@ def create_instance_task(service, task_id, access_key, secret_key, region, insta
                     root_device_name = ami_details['RootDeviceName']
                     log_task(task_id, f"获取到根设备名称: {root_device_name}")
                     log_task(task_id, f"应用自定义硬盘大小: {disk_size_int} GB (gp3类型)")
-                    
-                    run_args['BlockDeviceMappings'] = [
-                        {
-                            'DeviceName': root_device_name,
-                            'Ebs': {
-                                'VolumeSize': disk_size_int,
-                                'VolumeType': 'gp3',
-                                'DeleteOnTermination': True
-                            }
-                        }
-                    ]
+                    run_args['BlockDeviceMappings'] = [{'DeviceName': root_device_name, 'Ebs': {'VolumeSize': disk_size_int, 'VolumeType': 'gp3', 'DeleteOnTermination': True}}]
                 except (ValueError, KeyError, IndexError) as e:
                     log_task(task_id, f"警告: 硬盘大小({disk_size})无效或无法获取AMI信息({e})。将使用默认大小。")
-
-            # 4. 运行实例
             instance = client.run_instances(**run_args)
             instance_id = instance['Instances'][0]['InstanceId']
             log_task(task_id, f"实例请求已发送, ID: {instance_id}")
-
-            # 5. 等待实例运行并获取IP
             waiter = client.get_waiter('instance_running')
             waiter.wait(InstanceIds=[instance_id])
             desc = client.describe_instances(InstanceIds=[instance_id])
             ip = desc['Reservations'][0]['Instances'][0].get('PublicIpAddress', 'N/A')
             log_task(task_id, f"实例 {instance_id} 已运行, 公网 IP: {ip}")
-
         elif service == 'lightsail':
             client = boto3.client('lightsail', region_name=region, aws_access_key_id=access_key, aws_secret_access_key=secret_key, config=get_boto_config())
-            
-            # 1. 获取蓝图
             blueprints = client.get_blueprints()
             debian_blueprints = sorted([bp for bp in blueprints['blueprints'] if 'debian' in bp['id'] and bp['isActive']], key=lambda x: x['version'], reverse=True)
             if not debian_blueprints: raise Exception("未找到可用的Debian蓝图")
             blueprint_id = debian_blueprints[0]['blueprintId']
             log_task(task_id, f"使用蓝图: {blueprint_id}")
-            
-            # 2. 创建实例
             instance_name = f"lightsail-{region}-{int(time.time())}"
-            client.create_instances(
-                instanceNames=[instance_name],
-                availabilityZone=f"{region}a",
-                blueprintId=blueprint_id,
-                bundleId=instance_type,
-                userData=user_data
-            )
+            client.create_instances(instanceNames=[instance_name], availabilityZone=f"{region}a", blueprintId=blueprint_id, bundleId=instance_type, userData=user_data)
             log_task(task_id, f"实例 {instance_name} 创建请求已发送。")
-            
-            # 3. 配置防火墙（在实例创建后进行）
             configure_lightsail_firewall(client, instance_name, task_id)
-
         log_task(task_id, "--- 任务完成 ---")
     except Exception as e: handle_aws_error(e, task_id)
 
@@ -241,6 +174,7 @@ def activate_region_task(task_id, access_key, secret_key, region):
         client.enable_region(RegionName=region)
         log_task(task_id, f"区域 {region} 激活请求已成功提交。"); log_task(task_id, "--- 任务完成 ---")
     except Exception as e: handle_aws_error(e, task_id)
+
 def query_all_instances_task(task_id, access_key, secret_key):
     log_task(task_id, "开始查询所有已激活区域的实例...")
     try:
@@ -276,9 +210,11 @@ def login():
         else:
             return render_template("login.html", error="密码错误")
     return render_template("login.html")
+
 @app.route("/logout")
 def logout():
     session.clear(); return redirect(url_for('login'))
+
 @app.route("/")
 @login_required
 def index(): return render_template("index.html")
@@ -291,6 +227,7 @@ def manage_accounts():
     if any(k['name'] == data['name'] for k in keys): return jsonify({"error": "账户名称已存在"}), 400
     keys.append(data); save_keys(KEY_FILE, keys)
     return jsonify({"success": True, "name": data['name']}), 201
+
 @app.route("/api/accounts/<name>", methods=["DELETE"])
 @login_required
 def delete_account(name):
@@ -300,6 +237,7 @@ def delete_account(name):
     if session.get('account_name') == name:
         session.pop('account_name', None); session.pop('aws_access_key_id', None); session.pop('aws_secret_access_key', None)
     return jsonify({"success": True})
+
 @app.route("/api/session", methods=["POST", "DELETE", "GET"])
 @login_required
 def aws_session():
@@ -354,33 +292,12 @@ def instance_action():
             elif action == 'stop': client.stop_instances(InstanceIds=[instance_id])
             elif action == 'restart': client.reboot_instances(InstanceIds=[instance_id])
             elif action == 'delete': client.terminate_instances(InstanceIds=[instance_id])
-            # 【新增】处理更换IP的逻辑
-            elif action == 'change-ip':
-                # 1. 查找当前实例是否已关联EIP
-                old_eip = None
-                addrs = client.describe_addresses(Filters=[{'Name': 'instance-id', 'Values': [instance_id]}])
-                if addrs['Addresses']:
-                    old_eip = addrs['Addresses'][0]
-                
-                # 2. 分配一个新的EIP
-                new_eip = client.allocate_address(Domain='vpc')
-                
-                # 3. 将新的EIP关联到实例
-                client.associate_address(InstanceId=instance_id, AllocationId=new_eip['AllocationId'])
-                
-                # 4. 如果存在旧的EIP，则释放它
-                if old_eip:
-                    client.release_address(AllocationId=old_eip['AllocationId'])
-                
-                return jsonify({"success": True, "message": f"实例 {instance_id} 已成功更换 IP 为 {new_eip['PublicIp']}"})
-
         elif instance_type == 'Lightsail':
             client = boto3.client('lightsail', region_name=region, aws_access_key_id=g.aws_access_key_id, aws_secret_access_key=g.aws_secret_access_key, config=get_boto_config())
             if action == 'start': client.start_instance(instanceName=instance_id)
             elif action == 'stop': client.stop_instance(instanceName=instance_id)
             elif action == 'restart': client.reboot_instance(instanceName=instance_id)
             elif action == 'delete': client.delete_instance(instanceName=instance_id)
-        
         return jsonify({"success": True, "message": f"实例 {instance_id} 的 {action} 请求已发送"})
     except Exception as e: return jsonify({"error": handle_aws_error(e)}), 500
 
@@ -431,12 +348,14 @@ def get_lightsail_bundles():
 @app.route("/api/query-quota", methods=["POST"])
 @login_required
 def query_quota():
-    account_name = request.json.get("account_name")
+    data = request.json
+    account_name = data.get("account_name")
+    region = data.get("region", QUOTA_REGION)
     keys = load_keys(KEY_FILE)
     account = next((k for k in keys if k['name'] == account_name), None)
     if not account: return jsonify({"error": "账户未找到"}), 404
     try:
-        client = boto3.client('service-quotas', region_name=QUOTA_REGION, aws_access_key_id=account['access_key'], aws_secret_access_key=account['secret_key'], config=get_boto_config())
+        client = boto3.client('service-quotas', region_name=region, aws_access_key_id=account['access_key'], aws_secret_access_key=account['secret_key'], config=get_boto_config())
         quota = client.get_service_quota(ServiceCode='ec2', QuotaCode=QUOTA_CODE)
         return jsonify({"quota": int(quota['Quota']['Value'])})
     except Exception as e: return jsonify({"error": handle_aws_error(e)})
@@ -447,12 +366,9 @@ def query_quota():
 def start_create_instance(service):
     data = request.json
     instance_type = data.get("instance_type") if service == 'ec2' else data.get("bundle_id")
-    disk_size = data.get("disk_size") 
+    disk_size = data.get("disk_size")
     task_id = f"{service}-{int(time.time())}"
-    threading.Thread(target=create_instance_task, args=(
-        service, task_id, g.aws_access_key_id, g.aws_secret_access_key, 
-        data["region"], instance_type, data["user_data"], disk_size
-    )).start()
+    threading.Thread(target=create_instance_task, args=(service, task_id, g.aws_access_key_id, g.aws_secret_access_key, data["region"], instance_type, data["user_data"], disk_size)).start()
     return jsonify({"success": True, "task_id": task_id})
 
 @app.route("/api/activate-region", methods=["POST"])
