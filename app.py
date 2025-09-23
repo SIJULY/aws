@@ -13,7 +13,6 @@ PASSWORD = "1325"
 # --- 常量定义 ---
 KEY_FILE = "key.txt"
 QUOTA_CODE = 'L-1216C47A' # vCPU Quota
-BEDROCK_QUOTA_CODE = 'L-511172B7' # Active provisioned throughputs per account
 QUOTA_REGION = 'us-east-1' 
 REGION_MAPPING = {
     "af-south-1": "af-south-1 (非洲（开普敦）)",
@@ -379,34 +378,6 @@ def query_quota():
         quota = client.get_service_quota(ServiceCode='ec2', QuotaCode=QUOTA_CODE)
         return jsonify({"quota": int(quota['Quota']['Value'])})
     except Exception as e: return jsonify({"error": handle_aws_error(e)})
-
-# 【已修改】查询 Bedrock 状态的智能API
-@app.route("/api/query-bedrock-quota", methods=["POST"])
-@login_required
-def query_bedrock_quota():
-    data = request.json
-    account_name = data.get("account_name")
-    region = data.get("region", QUOTA_REGION)
-    keys = load_keys(KEY_FILE)
-    account = next((k for k in keys if k['name'] == account_name), None)
-    if not account: return jsonify({"error": "账户未找到"}), 404
-    try:
-        bedrock_client = boto3.client('bedrock', region_name=region, aws_access_key_id=account['access_key'], aws_secret_access_key=account['secret_key'], config=get_boto_config())
-        bedrock_client.list_foundation_models()
-        
-        quota_client = boto3.client('service-quotas', region_name=region, aws_access_key_id=account['access_key'], aws_secret_access_key=account['secret_key'], config=get_boto_config())
-        quota = quota_client.get_service_quota(ServiceCode='bedrock', QuotaCode=BEDROCK_QUOTA_CODE)
-        return jsonify({"status": "ENABLED", "quota": int(quota['Quota']['Value'])})
-
-    except ClientError as e:
-        error_code = e.response.get("Error", {}).get("Code")
-        # 【已修改】增加对 NoSuchResourceException 的判断
-        if error_code in ['AccessDeniedException', 'NoSuchResourceException']:
-            return jsonify({"status": "NOT_ENABLED", "message": "需要申请模型访问权限"})
-        else:
-            return jsonify({"status": "ERROR", "message": f"查询失败: {error_code}"})
-    except Exception as e:
-        return jsonify({"status": "ERROR", "message": "查询失败，请检查区域支持情况"})
 
 @app.route("/api/instances/<service>", methods=["POST"])
 @login_required
