@@ -24,10 +24,10 @@ document.addEventListener('DOMContentLoaded', function() {
         confirmLightsailCreationBtn: document.getElementById('confirmLightsailCreationBtn'),
         ec2Spinner: document.getElementById('ec2Spinner'),
         lightsailSpinner: document.getElementById('lightsailSpinner'),
-        paginationNav: document.getElementById('pagination-nav'),
+        paginationNav: document.getElementById('pagination-nav'), 
     };
     let logPollingInterval = null;
-    let currentPage = 1;
+    let currentPage = 1; 
 
     // --- 辅助函数 ---
     const log = (message, type = 'info') => {
@@ -142,20 +142,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 <tr data-account-name="${acc.name}">
                     <td>${acc.name}</td>
                     <td class="quota-cell text-center">--</td>
-                    <td class="bedrock-quota-cell text-center">--</td>
                     <td class="text-center">
                         <div class="btn-group btn-group-sm">
                             <button class="btn btn-success" data-action="select">选择</button>
-                            <button class="btn btn-info" data-action="query-quota">查vCPU</button>
-                            <button class="btn btn-primary" data-action="query-bedrock-quota">查Bedrock</button>
+                            <button class="btn btn-info" data-action="query-quota">查配额</button>
                             <button class="btn btn-danger" data-action="delete">删除</button>
                         </div>
                     </td>
-                </tr>`).join('') : '<tr><td colspan="4" class="text-center">没有已保存的账户</td></tr>';
+                </tr>`).join('') : '<tr><td colspan="3" class="text-center">没有已保存的账户</td></tr>';
             renderPagination(data.total_pages, data.current_page);
             updateAwsLoginStatus();
         } catch (error) {
-            UI.accountList.innerHTML = '<tr><td colspan="4" class="text-center text-danger">加载账户列表失败</td></tr>';
+            UI.accountList.innerHTML = '<tr><td colspan="3" class="text-center text-danger">加载账户列表失败</td></tr>';
         }
     };
     
@@ -252,43 +250,6 @@ document.addEventListener('DOMContentLoaded', function() {
             quotaCell.textContent = '查询失败'; 
         }
     };
-    
-    // 【已修改】查询Bedrock状态的函数，增加了日志链接
-    const queryBedrockQuota = async (accountName, region) => {
-        const row = UI.accountList.querySelector(`tr[data-account-name="${accountName}"]`);
-        if (!row) return;
-        if (!region) { log('请先在下方“操作区域”中选择一个区域再查询状态。', 'error'); return; }
-        const quotaCell = row.querySelector('.bedrock-quota-cell');
-        quotaCell.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
-        log(`正在为账户 ${accountName} 检测区域 ${region} 的 Bedrock 状态...`);
-        try {
-            const data = await apiCall('/api/query-bedrock-quota', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account_name: accountName, region: region }) });
-            if (data && data.status) {
-                switch(data.status) {
-                    case "ENABLED":
-                        quotaCell.innerHTML = `<span class="text-success fw-bold">已启用 (${data.quota})</span>`;
-                        log(`账户 ${accountName} 在区域 ${region} 的 Bedrock 已启用，配额: ${data.quota}`, 'success');
-                        break;
-                    case "NOT_ENABLED":
-                        quotaCell.innerHTML = `<span class="text-warning">需申请</span>`;
-                        // 【新增】构建带链接的日志消息
-                        const url = `https://${region}.console.aws.amazon.com/bedrock/home?region=${region}#/modelaccess`;
-                        const message = `账户 ${accountName} 在区域 ${region} 的 Bedrock 需要前往控制台(<a href="${url}" target="_blank" title="点击打开AWS控制台">${url}</a>)申请模型访问权限。`;
-                        log(message, 'warn');
-                        break;
-                    case "ERROR":
-                        quotaCell.innerHTML = `<span class="text-danger">查询失败</span>`;
-                        log(`账户 ${accountName} 在区域 ${region} 的 Bedrock 状态查询失败: ${data.message}`, 'error');
-                        break;
-                }
-            } else {
-                quotaCell.textContent = `错误`;
-                log(`账户 ${accountName} 的 Bedrock 状态查询未能返回有效数据。`, 'error');
-            }
-        } catch (error) { 
-            quotaCell.textContent = '查询失败'; 
-        }
-    };
 
     // --- 事件监听 ---
     UI.accountList.addEventListener('click', async (event) => {
@@ -310,9 +271,6 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (action === 'query-quota') {
             const region = UI.regionSelector.value;
             queryQuota(accountName, region);
-        } else if (action === 'query-bedrock-quota') {
-            const region = UI.regionSelector.value;
-            queryBedrockQuota(accountName, region);
         }
     });
 
@@ -344,12 +302,11 @@ document.addEventListener('DOMContentLoaded', function() {
     UI.queryAllQuotasBtn.addEventListener('click', () => {
         const region = UI.regionSelector.value;
         if (!region || UI.regionSelector.disabled) { log('请先选择一个账户和一个区域再执行此操作。', 'error'); return; }
-        log(`开始为所有账户查询区域 ${region} 的 vCPU 和 Bedrock 配额...`);
+        log(`开始为所有账户查询区域 ${region} 的 vCPU 配额...`);
         const rows = UI.accountList.querySelectorAll('tr[data-account-name]');
         rows.forEach(row => {
             const accountName = row.dataset.accountName;
             queryQuota(accountName, region);
-            queryBedrockQuota(accountName, region);
         });
     });
 
@@ -425,8 +382,6 @@ document.addEventListener('DOMContentLoaded', function() {
             setTimeout(() => { UI.querySelectedRegionBtn.dispatchEvent(new Event('click')); }, 500); 
         }
     });
-    
-    // UI.gotoBedrockBtn 的监听器已移除，因为按钮不存在了
 
     UI.createEc2Btn.addEventListener('click', () => openInstanceTypeModal('ec2'));
     UI.createLsBtn.addEventListener('click', () => openInstanceTypeModal('lightsail'));
