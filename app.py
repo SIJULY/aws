@@ -217,7 +217,7 @@ def index(): return render_template("index.html")
 def manage_accounts():
     if request.method == "GET":
         page = request.args.get('page', 1, type=int)
-        limit = request.args.get('limit', 6, type=int)
+        limit = request.args.get('limit', 5, type=int)
         
         all_keys = load_keys(KEY_FILE)
         all_keys.sort(key=lambda x: x['name']) # 排序
