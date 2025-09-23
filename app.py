@@ -12,8 +12,10 @@ PASSWORD = "1325"
 
 # --- 常量定义 ---
 KEY_FILE = "key.txt"
-QUOTA_CODE = 'L-1216C47A'
-QUOTA_REGION = 'us-east-1' # 保留作为备用
+QUOTA_CODE = 'L-1216C47A' # vCPU Quota
+# 【新增】Bedrock配额常量
+BEDROCK_QUOTA_CODE = 'L-511172B7' # Active provisioned throughputs per account
+QUOTA_REGION = 'us-east-1' 
 REGION_MAPPING = {
     "af-south-1": "af-south-1 (非洲（开普敦）)",
     "ap-east-1": "ap-east-1 (亚太地区（香港）)",
@@ -53,7 +55,7 @@ REGION_MAPPING = {
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s:%(name)s:%(message)s')
 task_logs = {}
 
-# ... (其他所有辅助函数、装饰器、后台任务等保持不变) ...
+# ... (所有辅助函数、装饰器、后台任务等保持不变) ...
 def get_boto_config(): return Config(connect_timeout=15, retries={'max_attempts': 2})
 def load_keys(keyfile):
     if not os.path.exists(keyfile): return []
@@ -260,7 +262,6 @@ def aws_session():
     if 'account_name' in session: return jsonify({"logged_in": True, "name": session['account_name']})
     return jsonify({"logged_in": False})
 
-# 【已修改】get_regions函数，实现美国区域置顶
 @app.route("/api/regions")
 @login_required
 @aws_login_required
@@ -269,13 +270,8 @@ def get_regions():
         client = boto3.client('ec2', region_name='us-east-1', aws_access_key_id=g.aws_access_key_id, aws_secret_access_key=g.aws_secret_access_key, config=get_boto_config())
         response = client.describe_regions(AllRegions=True)
         regions = [{"code": r['RegionName'], "name": REGION_MAPPING.get(r['RegionName'], r['RegionName']), "enabled": r['OptInStatus'] in ['opt-in-not-required', 'opted-in']} for r in response['Regions']]
-        
-        # 定义优先置顶的区域列表
         priority_regions = ['us-east-1', 'us-east-2', 'us-west-1', 'us-west-2']
-        
-        # 自定义排序：优先区域在前，其余按名称排序
         sorted_regions = sorted(regions, key=lambda r: (0 if r['code'] in priority_regions else 1, r['name']))
-        
         return jsonify(sorted_regions)
     except Exception as e: return jsonify({"error": handle_aws_error(e)}), 500
 
@@ -384,6 +380,24 @@ def query_quota():
         quota = client.get_service_quota(ServiceCode='ec2', QuotaCode=QUOTA_CODE)
         return jsonify({"quota": int(quota['Quota']['Value'])})
     except Exception as e: return jsonify({"error": handle_aws_error(e)})
+
+# 【新增】查询 Bedrock 配额的 API
+@app.route("/api/query-bedrock-quota", methods=["POST"])
+@login_required
+def query_bedrock_quota():
+    data = request.json
+    account_name = data.get("account_name")
+    region = data.get("region", QUOTA_REGION)
+    keys = load_keys(KEY_FILE)
+    account = next((k for k in keys if k['name'] == account_name), None)
+    if not account: return jsonify({"error": "账户未找到"}), 404
+    try:
+        client = boto3.client('service-quotas', region_name=region, aws_access_key_id=account['access_key'], aws_secret_access_key=account['secret_key'], config=get_boto_config())
+        # 使用 Bedrock 的 ServiceCode 和 QuotaCode
+        quota = client.get_service_quota(ServiceCode='bedrock', QuotaCode=BEDROCK_QUOTA_CODE)
+        return jsonify({"quota": int(quota['Quota']['Value'])})
+    except Exception as e: return jsonify({"error": handle_aws_error(e)})
+
 
 @app.route("/api/instances/<service>", methods=["POST"])
 @login_required
