@@ -146,7 +146,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // 【改版】加载并渲染账户列表（支持翻页）
     const loadAndRenderAccounts = async (page = 1) => {
         try {
-            const data = await apiCall(`/api/accounts?page=${page}&limit=6`);
+            const data = await apiCall(`/api/accounts?page=${page}&limit=5`);
             if (!data) return;
 
             currentPage = data.current_page;
