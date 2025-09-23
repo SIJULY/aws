@@ -78,6 +78,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 2500);
     };
 
+    // 【已修正】重新加入更换IP按钮的 renderInstanceRow 函数
     const renderInstanceRow = (inst) => {
         const row = document.createElement('tr');
         row.dataset.id = inst.id;
@@ -87,11 +88,17 @@ document.addEventListener('DOMContentLoaded', function() {
         row.dataset.state = inst.state;
         const isRunning = inst.state === 'running';
         const isStopped = inst.state === 'stopped';
+
+        const changeIpButton = (inst.type === 'EC2' && isRunning)
+            ? `<button type="button" class="btn btn-info btn-sm" data-action="change-ip">更换IP</button>`
+            : '';
+
         const buttonsHTML = `
             <div class="btn-group btn-group-sm" role="group">
                 <button type="button" class="btn btn-success" data-action="start" ${!isStopped ? 'disabled' : ''}>启动</button>
                 <button type="button" class="btn btn-warning" data-action="stop" ${!isRunning ? 'disabled' : ''}>停止</button>
                 <button type="button" class="btn btn-secondary" data-action="restart" ${!isRunning ? 'disabled' : ''}>重启</button>
+                ${changeIpButton}
                 <button type="button" class="btn btn-danger" data-action="delete" ${inst.type === 'EC2' && isRunning ? 'disabled' : ''}>删除</button>
             </div>`;
         row.innerHTML = `
@@ -301,17 +308,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const selectedOption = UI.regionSelector.options[UI.regionSelector.selectedIndex];
         if (selectedOption) {
             const isEnabled = (selectedOption.dataset.enabled === 'true');
-            
-            // 1. 设置按钮的可用状态
             UI.activateRegionBtn.disabled = isEnabled;
-
-            // 2. 根据可用状态切换背景色类
             if (isEnabled) {
-                // 如果区域已激活（按钮不可用），则移除黄色类，添加灰色类
                 UI.activateRegionBtn.classList.remove('btn-warning');
                 UI.activateRegionBtn.classList.add('btn-secondary');
             } else {
-                // 如果区域未激活（按钮可用），则移除灰色类，添加黄色类
                 UI.activateRegionBtn.classList.remove('btn-secondary');
                 UI.activateRegionBtn.classList.add('btn-warning');
             }
@@ -352,6 +353,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch(error) { /* handled */ }
     });
 
+    // 【已修正】重新加入更换IP逻辑的事件监听
     UI.instanceList.addEventListener('click', async (event) => {
         const button = event.target.closest('button[data-action]');
         if (!button || button.disabled) return;
@@ -361,6 +363,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const confirmText = {
             start: `确定要启动实例 ${instance.name}?`, stop: `确定要停止实例 ${instance.name}?`,
             restart: `确定要重启实例 ${instance.name}?`, delete: `【警告】此操作不可恢复！确定要永久删除实例 ${instance.name} 吗?`,
+            'change-ip': `确定要为实例 ${instance.name} 分配一个新的IP地址吗？这会产生少量费用，并自动释放旧IP。`
         };
         if (!confirm(confirmText[action])) return;
         log(`正在对实例 ${instance.name} 执行 ${action} 操作...`);
@@ -373,8 +376,11 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             if (!response) return;
             log(response.message, 'success');
-            setTimeout(() => { UI.querySelectedRegionBtn.dispatchEvent(new Event('click')); }, 5000);
-        } catch(error) { setTimeout(() => { UI.querySelectedRegionBtn.dispatchEvent(new Event('click')); }, 500); }
+            // 刷新列表以显示更新后的状态或IP
+            setTimeout(() => { UI.querySelectedRegionBtn.dispatchEvent(new Event('click')); }, 3000);
+        } catch(error) { 
+            setTimeout(() => { UI.querySelectedRegionBtn.dispatchEvent(new Event('click')); }, 500); 
+        }
     });
 
     UI.createEc2Btn.addEventListener('click', () => openInstanceTypeModal('ec2'));
