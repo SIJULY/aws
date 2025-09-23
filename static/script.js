@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // ... (UI常量等保持不变) ...
+    // --- 全局UI元素引用 ---
     const UI = {
         currentAccountStatus: document.getElementById('currentAccountStatus'),
         saveAccountBtn: document.getElementById('saveAccountBtn'),
@@ -24,19 +24,19 @@ document.addEventListener('DOMContentLoaded', function() {
         confirmLightsailCreationBtn: document.getElementById('confirmLightsailCreationBtn'),
         ec2Spinner: document.getElementById('ec2Spinner'),
         lightsailSpinner: document.getElementById('lightsailSpinner'),
-        paginationNav: document.getElementById('pagination-nav'), 
-        gotoBedrockBtn: document.getElementById('gotoBedrockBtn'),
+        paginationNav: document.getElementById('pagination-nav'),
     };
     let logPollingInterval = null;
-    let currentPage = 1; 
+    let currentPage = 1;
 
-    // ... (log, apiCall, startLogPolling, renderInstanceRow, setUIState, renderPagination 函数保持不变) ...
+    // --- 辅助函数 ---
     const log = (message, type = 'info') => {
         const now = new Date().toLocaleTimeString();
-        const colorClass = type === 'error' ? 'text-danger' : (type === 'success' ? 'text-success' : '');
-        UI.logOutput.innerHTML += `<span class="${colorClass}">[${now}] ${message}</span>\n`;
+        const colorClass = type === 'error' ? 'text-danger' : (type === 'success' ? 'text-success' : 'text-warning');
+        UI.logOutput.innerHTML += `<div class="${colorClass}">[${now}] ${message}</div>`;
         UI.logOutput.scrollTop = UI.logOutput.scrollHeight;
     };
+
     const apiCall = async (url, options = {}) => {
         try {
             const response = await fetch(url, options);
@@ -54,6 +54,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return await response.json();
         } catch (error) { log(error.message, 'error'); throw error; }
     };
+
     const startLogPolling = (taskId, isQueryAll = false) => {
         if (logPollingInterval) clearInterval(logPollingInterval);
         log(`任务 ${taskId} 已启动...`);
@@ -78,6 +79,7 @@ document.addEventListener('DOMContentLoaded', function() {
             } catch (error) { clearInterval(logPollingInterval); }
         }, 2500);
     };
+
     const renderInstanceRow = (inst) => {
         const row = document.createElement('tr');
         row.dataset.id = inst.id;
@@ -109,10 +111,12 @@ document.addEventListener('DOMContentLoaded', function() {
         if (existingRow) { existingRow.replaceWith(row); }
         else { UI.instanceList.appendChild(row); }
     };
+
     const setUIState = (isAwsLoggedIn) => {
-        [UI.createEc2Btn, UI.createLsBtn, UI.querySelectedRegionBtn, UI.queryAllRegionsBtn, UI.regionSelector, UI.gotoBedrockBtn].forEach(el => el.disabled = !isAwsLoggedIn);
+        [UI.createEc2Btn, UI.createLsBtn, UI.querySelectedRegionBtn, UI.queryAllRegionsBtn, UI.regionSelector].forEach(el => el.disabled = !isAwsLoggedIn);
         UI.activateRegionBtn.disabled = true;
     };
+
     const renderPagination = (totalPages, currentPage) => {
         UI.paginationNav.innerHTML = '';
         if (totalPages <= 1) return;
@@ -128,6 +132,7 @@ document.addEventListener('DOMContentLoaded', function() {
         paginationHTML += '</ul>';
         UI.paginationNav.innerHTML = paginationHTML;
     };
+    
     const loadAndRenderAccounts = async (page = 1) => {
         try {
             const data = await apiCall(`/api/accounts?page=${page}&limit=5`);
@@ -153,6 +158,7 @@ document.addEventListener('DOMContentLoaded', function() {
             UI.accountList.innerHTML = '<tr><td colspan="4" class="text-center text-danger">加载账户列表失败</td></tr>';
         }
     };
+    
     const updateAwsLoginStatus = async () => {
         try {
             const data = await apiCall('/api/session');
@@ -247,7 +253,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
     
-    // 【已修改】查询Bedrock状态的函数
+    // 【已修改】查询Bedrock状态的函数，增加了日志链接
     const queryBedrockQuota = async (accountName, region) => {
         const row = UI.accountList.querySelector(`tr[data-account-name="${accountName}"]`);
         if (!row) return;
@@ -265,7 +271,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         break;
                     case "NOT_ENABLED":
                         quotaCell.innerHTML = `<span class="text-warning">需申请</span>`;
-                        log(`账户 ${accountName} 在区域 ${region} 的 Bedrock 需要前往控制台申请模型访问权限。`, 'warn');
+                        // 【新增】构建带链接的日志消息
+                        const url = `https://${region}.console.aws.amazon.com/bedrock/home?region=${region}#/modelaccess`;
+                        const message = `账户 ${accountName} 在区域 ${region} 的 Bedrock 需要前往控制台(<a href="${url}" target="_blank" title="点击打开AWS控制台">${url}</a>)申请模型访问权限。`;
+                        log(message, 'warn');
                         break;
                     case "ERROR":
                         quotaCell.innerHTML = `<span class="text-danger">查询失败</span>`;
@@ -416,17 +425,8 @@ document.addEventListener('DOMContentLoaded', function() {
             setTimeout(() => { UI.querySelectedRegionBtn.dispatchEvent(new Event('click')); }, 500); 
         }
     });
-
-    UI.gotoBedrockBtn.addEventListener('click', () => {
-        const region = UI.regionSelector.value;
-        if (!region) {
-            log('请先选择一个区域。', 'error');
-            return;
-        }
-        const url = `https://${region}.console.aws.amazon.com/bedrock/home?region=${region}#/modelaccess`;
-        log(`正在打开新标签页，前往 ${region} 区域的Bedrock控制台...`);
-        window.open(url, '_blank');
-    });
+    
+    // UI.gotoBedrockBtn 的监听器已移除，因为按钮不存在了
 
     UI.createEc2Btn.addEventListener('click', () => openInstanceTypeModal('ec2'));
     UI.createLsBtn.addEventListener('click', () => openInstanceTypeModal('lightsail'));
