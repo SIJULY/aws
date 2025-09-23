@@ -1,4 +1,4 @@
-import boto3, os, threading, time, queue, json, logging
+import boto3, os, threading, time, queue, json, logging, math
 from botocore.exceptions import ClientError
 from botocore.config import Config
 from flask import Flask, render_template, jsonify, request, session, g, redirect, url_for
@@ -53,7 +53,7 @@ REGION_MAPPING = {
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s:%(name)s:%(message)s')
 task_logs = {}
 
-# ... (所有辅助函数、装饰器、后台任务等保持不变) ...
+# ... (所有辅助函数、装饰器、后台任务等保持不变，为确保完整性，此处全部粘贴) ...
 def get_boto_config(): return Config(connect_timeout=15, retries={'max_attempts': 2})
 def load_keys(keyfile):
     if not os.path.exists(keyfile): return []
@@ -211,10 +211,31 @@ def logout():
 @login_required
 def index(): return render_template("index.html")
 
+# 【已修改】账户管理API，增加翻页功能
 @app.route("/api/accounts", methods=["GET", "POST"])
 @login_required
 def manage_accounts():
-    if request.method == "GET": return jsonify([{"name": k["name"]} for k in load_keys(KEY_FILE)])
+    if request.method == "GET":
+        page = request.args.get('page', 1, type=int)
+        limit = request.args.get('limit', 6, type=int)
+        
+        all_keys = load_keys(KEY_FILE)
+        all_keys.sort(key=lambda x: x['name']) # 排序
+
+        total_accounts = len(all_keys)
+        total_pages = math.ceil(total_accounts / limit)
+        
+        start = (page - 1) * limit
+        end = start + limit
+        paginated_keys = all_keys[start:end]
+
+        return jsonify({
+            "accounts": [{"name": k["name"]} for k in paginated_keys],
+            "total_accounts": total_accounts,
+            "total_pages": total_pages,
+            "current_page": page
+        })
+
     data = request.json; keys = load_keys(KEY_FILE)
     if any(k['name'] == data['name'] for k in keys): return jsonify({"error": "账户名称已存在"}), 400
     keys.append(data); save_keys(KEY_FILE, keys)
@@ -270,7 +291,6 @@ def get_instances():
         return jsonify(instances)
     except Exception as e: return jsonify({"error": handle_aws_error(e)}), 500
 
-# 【已修正】重新加入更换IP逻辑的 instance_action 函数
 @app.route("/api/instance-action", methods=["POST"])
 @login_required
 @aws_login_required
