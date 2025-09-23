@@ -53,7 +53,7 @@ REGION_MAPPING = {
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s:%(name)s:%(message)s')
 task_logs = {}
 
-# --- 辅助函数 ---
+# ... (所有辅助函数、装饰器、后台任务等保持不变) ...
 def get_boto_config(): return Config(connect_timeout=15, retries={'max_attempts': 2})
 def load_keys(keyfile):
     if not os.path.exists(keyfile): return []
@@ -73,8 +73,6 @@ def handle_aws_error(e, task_id=None):
     logging.error(f"Task({task_id}): {error_message}")
     if task_id: log_task(task_id, f"--- 任务失败: {error_message} ---")
     return error_message
-
-# --- 装饰器 ---
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -89,8 +87,6 @@ def aws_login_required(f):
         g.aws_access_key_id, g.aws_secret_access_key = session['aws_access_key_id'], session['aws_secret_access_key']
         return f(*args, **kwargs)
     return decorated_function
-
-# --- 后台任务 ---
 def create_open_security_group(ec2_client, task_id):
     try:
         vpcs = ec2_client.describe_vpcs(Filters=[{'Name': 'isDefault', 'Values': ['true']}])
@@ -112,7 +108,6 @@ def create_open_security_group(ec2_client, task_id):
             log_task(task_id, f"已获取存在的安全组ID: {security_group_id}")
             return security_group_id
         else: raise e
-
 def configure_lightsail_firewall(lightsail_client, instance_name, task_id):
     try:
         log_task(task_id, f"等待实例 {instance_name} 进入可操作状态...")
@@ -123,7 +118,6 @@ def configure_lightsail_firewall(lightsail_client, instance_name, task_id):
         log_task(task_id, f"成功为实例 {instance_name} 配置防火墙，开放所有端口。")
     except Exception as e:
         log_task(task_id, f"为实例 {instance_name} 配置防火墙失败: {str(e)}")
-
 def create_instance_task(service, task_id, access_key, secret_key, region, instance_type, user_data, disk_size=None):
     log_task(task_id, f"{service.upper()} 任务启动: 区域 {region}, 类型/套餐 {instance_type}")
     try:
@@ -166,7 +160,6 @@ def create_instance_task(service, task_id, access_key, secret_key, region, insta
             configure_lightsail_firewall(client, instance_name, task_id)
         log_task(task_id, "--- 任务完成 ---")
     except Exception as e: handle_aws_error(e, task_id)
-
 def activate_region_task(task_id, access_key, secret_key, region):
     log_task(task_id, f"开始激活区域 {region}...")
     try:
@@ -174,7 +167,6 @@ def activate_region_task(task_id, access_key, secret_key, region):
         client.enable_region(RegionName=region)
         log_task(task_id, f"区域 {region} 激活请求已成功提交。"); log_task(task_id, "--- 任务完成 ---")
     except Exception as e: handle_aws_error(e, task_id)
-
 def query_all_instances_task(task_id, access_key, secret_key):
     log_task(task_id, "开始查询所有已激活区域的实例...")
     try:
@@ -278,6 +270,7 @@ def get_instances():
         return jsonify(instances)
     except Exception as e: return jsonify({"error": handle_aws_error(e)}), 500
 
+# 【已修正】重新加入更换IP逻辑的 instance_action 函数
 @app.route("/api/instance-action", methods=["POST"])
 @login_required
 @aws_login_required
@@ -292,6 +285,16 @@ def instance_action():
             elif action == 'stop': client.stop_instances(InstanceIds=[instance_id])
             elif action == 'restart': client.reboot_instances(InstanceIds=[instance_id])
             elif action == 'delete': client.terminate_instances(InstanceIds=[instance_id])
+            elif action == 'change-ip':
+                old_eip = None
+                addrs = client.describe_addresses(Filters=[{'Name': 'instance-id', 'Values': [instance_id]}])
+                if addrs['Addresses']:
+                    old_eip = addrs['Addresses'][0]
+                new_eip = client.allocate_address(Domain='vpc')
+                client.associate_address(InstanceId=instance_id, AllocationId=new_eip['AllocationId'])
+                if old_eip:
+                    client.release_address(AllocationId=old_eip['AllocationId'])
+                return jsonify({"success": True, "message": f"实例 {instance_id} 已成功更换 IP 为 {new_eip['PublicIp']}"})
         elif instance_type == 'Lightsail':
             client = boto3.client('lightsail', region_name=region, aws_access_key_id=g.aws_access_key_id, aws_secret_access_key=g.aws_secret_access_key, config=get_boto_config())
             if action == 'start': client.start_instance(instanceName=instance_id)
