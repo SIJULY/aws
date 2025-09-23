@@ -13,8 +13,7 @@ PASSWORD = "1325"
 # --- 常量定义 ---
 KEY_FILE = "key.txt"
 QUOTA_CODE = 'L-1216C47A' # vCPU Quota
-# 【新增】Bedrock配额常量
-BEDROCK_QUOTA_CODE = 'L-511172B7' # Active provisioned throughputs per account
+BEDROCK_QUOTA_CODE = 'L-511172B7' 
 QUOTA_REGION = 'us-east-1' 
 REGION_MAPPING = {
     "af-south-1": "af-south-1 (非洲（开普敦）)",
@@ -381,7 +380,7 @@ def query_quota():
         return jsonify({"quota": int(quota['Quota']['Value'])})
     except Exception as e: return jsonify({"error": handle_aws_error(e)})
 
-# 【新增】查询 Bedrock 配额的 API
+# 【已修改】查询 Bedrock 状态的智能API
 @app.route("/api/query-bedrock-quota", methods=["POST"])
 @login_required
 def query_bedrock_quota():
@@ -392,12 +391,25 @@ def query_bedrock_quota():
     account = next((k for k in keys if k['name'] == account_name), None)
     if not account: return jsonify({"error": "账户未找到"}), 404
     try:
-        client = boto3.client('service-quotas', region_name=region, aws_access_key_id=account['access_key'], aws_secret_access_key=account['secret_key'], config=get_boto_config())
-        # 使用 Bedrock 的 ServiceCode 和 QuotaCode
-        quota = client.get_service_quota(ServiceCode='bedrock', QuotaCode=BEDROCK_QUOTA_CODE)
-        return jsonify({"quota": int(quota['Quota']['Value'])})
-    except Exception as e: return jsonify({"error": handle_aws_error(e)})
+        # 步骤 1: 尝试一个基础 Bedrock API 调用来探测服务状态
+        bedrock_client = boto3.client('bedrock', region_name=region, aws_access_key_id=account['access_key'], aws_secret_access_key=account['secret_key'], config=get_boto_config())
+        bedrock_client.list_foundation_models() # 如果这一步失败，说明服务不可用
 
+        # 步骤 2: 如果上一步成功，再查询配额
+        quota_client = boto3.client('service-quotas', region_name=region, aws_access_key_id=account['access_key'], aws_secret_access_key=account['secret_key'], config=get_boto_config())
+        quota = quota_client.get_service_quota(ServiceCode='bedrock', QuotaCode=BEDROCK_QUOTA_CODE)
+        return jsonify({"status": "ENABLED", "quota": int(quota['Quota']['Value'])})
+
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code")
+        # 捕获特定的权限错误，这通常意味着服务需要手动启用
+        if error_code == 'AccessDeniedException':
+            return jsonify({"status": "NOT_ENABLED", "message": "需要申请模型访问权限"})
+        else:
+            return jsonify({"status": "ERROR", "message": f"查询失败: {error_code}"})
+    except Exception as e:
+        # 捕获其他所有异常
+        return jsonify({"status": "ERROR", "message": "查询失败，请检查区域支持情况"})
 
 @app.route("/api/instances/<service>", methods=["POST"])
 @login_required
