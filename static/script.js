@@ -24,10 +24,10 @@ document.addEventListener('DOMContentLoaded', function() {
         confirmLightsailCreationBtn: document.getElementById('confirmLightsailCreationBtn'),
         ec2Spinner: document.getElementById('ec2Spinner'),
         lightsailSpinner: document.getElementById('lightsailSpinner'),
-        paginationNav: document.getElementById('pagination-nav'), // 【新增】翻页容器
+        paginationNav: document.getElementById('pagination-nav'), 
     };
     let logPollingInterval = null;
-    let currentPage = 1; // 【新增】用于跟踪当前页码
+    let currentPage = 1; 
 
     // --- 辅助函数 (无变化) ---
     const log = (message, type = 'info') => {
@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) { log(error.message, 'error'); throw error; }
     };
     
-    // ... (其他辅助函数如 startLogPolling, renderInstanceRow 等保持不变, 为确保完整性，此处全部粘贴) ...
+    // ... (其他辅助函数等保持不变) ...
     const startLogPolling = (taskId, isQueryAll = false) => {
         if (logPollingInterval) clearInterval(logPollingInterval);
         log(`任务 ${taskId} 已启动...`);
@@ -80,7 +80,6 @@ document.addEventListener('DOMContentLoaded', function() {
             } catch (error) { clearInterval(logPollingInterval); }
         }, 2500);
     };
-
     const renderInstanceRow = (inst) => {
         const row = document.createElement('tr');
         row.dataset.id = inst.id;
@@ -112,45 +111,30 @@ document.addEventListener('DOMContentLoaded', function() {
         if (existingRow) { existingRow.replaceWith(row); }
         else { UI.instanceList.appendChild(row); }
     };
-
     const setUIState = (isAwsLoggedIn) => {
         [UI.createEc2Btn, UI.createLsBtn, UI.querySelectedRegionBtn, UI.queryAllRegionsBtn, UI.regionSelector].forEach(el => el.disabled = !isAwsLoggedIn);
         UI.activateRegionBtn.disabled = true;
     };
-    
-    // 【新增】渲染翻页按钮的函数
     const renderPagination = (totalPages, currentPage) => {
         UI.paginationNav.innerHTML = '';
         if (totalPages <= 1) return;
-
         let paginationHTML = '<ul class="pagination pagination-sm">';
-        
-        // 上一页按钮
         paginationHTML += `<li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
             <a class="page-link" href="#" data-page="${currentPage - 1}">‹</a></li>`;
-        
-        // 页面数字按钮
         for (let i = 1; i <= totalPages; i++) {
             paginationHTML += `<li class="page-item ${i === currentPage ? 'active' : ''}">
                 <a class="page-link" href="#" data-page="${i}">${i}</a></li>`;
         }
-        
-        // 下一页按钮
         paginationHTML += `<li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
             <a class="page-link" href="#" data-page="${currentPage + 1}">›</a></li>`;
-
         paginationHTML += '</ul>';
         UI.paginationNav.innerHTML = paginationHTML;
     };
-
-    // 【改版】加载并渲染账户列表（支持翻页）
     const loadAndRenderAccounts = async (page = 1) => {
         try {
             const data = await apiCall(`/api/accounts?page=${page}&limit=5`);
             if (!data) return;
-
             currentPage = data.current_page;
-            
             UI.accountList.innerHTML = data.accounts.length ? data.accounts.map(acc => `
                 <tr data-account-name="${acc.name}">
                     <td>${acc.name}</td>
@@ -163,15 +147,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                     </td>
                 </tr>`).join('') : '<tr><td colspan="3" class="text-center">没有已保存的账户</td></tr>';
-            
             renderPagination(data.total_pages, data.current_page);
             updateAwsLoginStatus();
         } catch (error) {
             UI.accountList.innerHTML = '<tr><td colspan="3" class="text-center text-danger">加载账户列表失败</td></tr>';
         }
     };
-    
-    // ... (其他函数如 updateAwsLoginStatus, loadRegions 等保持不变, 为确保完整性，此处全部粘贴) ...
     const updateAwsLoginStatus = async () => {
         try {
             const data = await apiCall('/api/session');
@@ -186,16 +167,27 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         } catch (error) { setUIState(false); }
     };
+
+    // 【已修改】loadRegions函数，增加设置默认值逻辑
     const loadRegions = async () => {
         log('正在加载区域列表...');
         try {
             const regions = await apiCall('/api/regions');
             if (!regions) return;
             UI.regionSelector.innerHTML = regions.map(r => `<option value="${r.code}" data-enabled="${r.enabled}">${r.name} ${r.enabled ? '' : '(未激活)'}</option>`).join('');
+            
+            // 检查 us-east-1 是否存在于选项中，如果存在则设为默认值
+            const defaultRegion = 'us-east-1';
+            const optionExists = Array.from(UI.regionSelector.options).some(opt => opt.value === defaultRegion);
+            if (optionExists) {
+                UI.regionSelector.value = defaultRegion;
+            }
+            
             log('区域列表加载成功。', 'success');
             UI.regionSelector.dispatchEvent(new Event('change'));
         } catch (error) { /* handled */ }
     };
+
     const openInstanceTypeModal = async (type) => {
         const region = UI.regionSelector.value;
         const modal = (type === 'ec2') ? UI.ec2TypeModal : UI.lightsailTypeModal;
@@ -276,7 +268,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!confirm(`确定要删除AWS账户 ${accountName} 吗？`)) return;
             await apiCall(`/api/accounts/${accountName}`, { method: 'DELETE' });
             log(`AWS账户 ${accountName} 删除成功。`, 'success');
-            loadAndRenderAccounts(1); // 删除后回到第一页
+            loadAndRenderAccounts(1);
         } else if (action === 'query-quota') {
             const region = UI.regionSelector.value;
             queryQuota(accountName, region);
@@ -293,11 +285,10 @@ document.addEventListener('DOMContentLoaded', function() {
             await apiCall('/api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, access_key, secret_key }) });
             log(`账户 ${name} 添加成功。`, 'success');
             form.reset();
-            loadAndRenderAccounts(1); // 保存后回到第一页
+            loadAndRenderAccounts(1);
         } catch (error) { alert(`添加失败: ${error.message}`); }
     });
     
-    // 【新增】为翻页按钮添加事件委托
     UI.paginationNav.addEventListener('click', (event) => {
         event.preventDefault();
         const link = event.target.closest('a.page-link');
@@ -308,8 +299,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
-
-    // ... (其他事件监听保持不变) ...
+    
     UI.queryAllQuotasBtn.addEventListener('click', () => {
         const region = UI.regionSelector.value;
         if (!region || UI.regionSelector.disabled) { log('请先选择一个账户和一个区域再执行此操作。', 'error'); return; }
