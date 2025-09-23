@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // --- 全局UI元素引用 ---
+    // ... (UI常量等保持不变) ...
     const UI = {
         currentAccountStatus: document.getElementById('currentAccountStatus'),
         saveAccountBtn: document.getElementById('saveAccountBtn'),
@@ -25,18 +25,18 @@ document.addEventListener('DOMContentLoaded', function() {
         ec2Spinner: document.getElementById('ec2Spinner'),
         lightsailSpinner: document.getElementById('lightsailSpinner'),
         paginationNav: document.getElementById('pagination-nav'), 
+        gotoBedrockBtn: document.getElementById('gotoBedrockBtn'),
     };
     let logPollingInterval = null;
     let currentPage = 1; 
 
-    // --- 辅助函数 ---
+    // ... (log, apiCall, startLogPolling, renderInstanceRow, setUIState, renderPagination 函数保持不变) ...
     const log = (message, type = 'info') => {
         const now = new Date().toLocaleTimeString();
         const colorClass = type === 'error' ? 'text-danger' : (type === 'success' ? 'text-success' : '');
         UI.logOutput.innerHTML += `<span class="${colorClass}">[${now}] ${message}</span>\n`;
         UI.logOutput.scrollTop = UI.logOutput.scrollHeight;
     };
-
     const apiCall = async (url, options = {}) => {
         try {
             const response = await fetch(url, options);
@@ -54,8 +54,6 @@ document.addEventListener('DOMContentLoaded', function() {
             return await response.json();
         } catch (error) { log(error.message, 'error'); throw error; }
     };
-    
-    // ... 其他辅助函数 ...
     const startLogPolling = (taskId, isQueryAll = false) => {
         if (logPollingInterval) clearInterval(logPollingInterval);
         log(`任务 ${taskId} 已启动...`);
@@ -112,7 +110,7 @@ document.addEventListener('DOMContentLoaded', function() {
         else { UI.instanceList.appendChild(row); }
     };
     const setUIState = (isAwsLoggedIn) => {
-        [UI.createEc2Btn, UI.createLsBtn, UI.querySelectedRegionBtn, UI.queryAllRegionsBtn, UI.regionSelector].forEach(el => el.disabled = !isAwsLoggedIn);
+        [UI.createEc2Btn, UI.createLsBtn, UI.querySelectedRegionBtn, UI.queryAllRegionsBtn, UI.regionSelector, UI.gotoBedrockBtn].forEach(el => el.disabled = !isAwsLoggedIn);
         UI.activateRegionBtn.disabled = true;
     };
     const renderPagination = (totalPages, currentPage) => {
@@ -130,8 +128,6 @@ document.addEventListener('DOMContentLoaded', function() {
         paginationHTML += '</ul>';
         UI.paginationNav.innerHTML = paginationHTML;
     };
-    
-    // 【已修改】增加 Bedrock 配额列的渲染
     const loadAndRenderAccounts = async (page = 1) => {
         try {
             const data = await apiCall(`/api/accounts?page=${page}&limit=5`);
@@ -157,7 +153,6 @@ document.addEventListener('DOMContentLoaded', function() {
             UI.accountList.innerHTML = '<tr><td colspan="4" class="text-center text-danger">加载账户列表失败</td></tr>';
         }
     };
-    
     const updateAwsLoginStatus = async () => {
         try {
             const data = await apiCall('/api/session');
@@ -252,32 +247,41 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
     
-    // 【新增】查询 Bedrock 配额的函数
+    // 【已修改】查询Bedrock状态的函数
     const queryBedrockQuota = async (accountName, region) => {
         const row = UI.accountList.querySelector(`tr[data-account-name="${accountName}"]`);
         if (!row) return;
-        if (!region) { log('请先在下方“操作区域”中选择一个区域再查询配额。', 'error'); return; }
+        if (!region) { log('请先在下方“操作区域”中选择一个区域再查询状态。', 'error'); return; }
         const quotaCell = row.querySelector('.bedrock-quota-cell');
         quotaCell.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
-        log(`正在为账户 ${accountName} 查询区域 ${region} 的 Bedrock 配额...`);
+        log(`正在为账户 ${accountName} 检测区域 ${region} 的 Bedrock 状态...`);
         try {
             const data = await apiCall('/api/query-bedrock-quota', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account_name: accountName, region: region }) });
-            if (data && data.quota !== undefined) {
-                quotaCell.textContent = data.quota; 
-                quotaCell.classList.add('fw-bold');
-                log(`账户 ${accountName} 在区域 ${region} 的 Bedrock 配额为: ${data.quota}`, 'success');
+            if (data && data.status) {
+                switch(data.status) {
+                    case "ENABLED":
+                        quotaCell.innerHTML = `<span class="text-success fw-bold">已启用 (${data.quota})</span>`;
+                        log(`账户 ${accountName} 在区域 ${region} 的 Bedrock 已启用，配额: ${data.quota}`, 'success');
+                        break;
+                    case "NOT_ENABLED":
+                        quotaCell.innerHTML = `<span class="text-warning">需申请</span>`;
+                        log(`账户 ${accountName} 在区域 ${region} 的 Bedrock 需要前往控制台申请模型访问权限。`, 'warn');
+                        break;
+                    case "ERROR":
+                        quotaCell.innerHTML = `<span class="text-danger">查询失败</span>`;
+                        log(`账户 ${accountName} 在区域 ${region} 的 Bedrock 状态查询失败: ${data.message}`, 'error');
+                        break;
+                }
             } else {
                 quotaCell.textContent = `错误`;
-                log(`账户 ${accountName} 的 Bedrock 配额查询未能返回有效数据。`, 'error');
+                log(`账户 ${accountName} 的 Bedrock 状态查询未能返回有效数据。`, 'error');
             }
         } catch (error) { 
             quotaCell.textContent = '查询失败'; 
         }
     };
 
-
     // --- 事件监听 ---
-    // 【已修改】账户列表事件监听，增加 query-bedrock-quota 动作
     UI.accountList.addEventListener('click', async (event) => {
         const button = event.target.closest('button[data-action]');
         if (!button) return;
@@ -328,7 +332,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // 【已修改】一键查询按钮，同时查询两种配额
     UI.queryAllQuotasBtn.addEventListener('click', () => {
         const region = UI.regionSelector.value;
         if (!region || UI.regionSelector.disabled) { log('请先选择一个账户和一个区域再执行此操作。', 'error'); return; }
@@ -413,6 +416,18 @@ document.addEventListener('DOMContentLoaded', function() {
             setTimeout(() => { UI.querySelectedRegionBtn.dispatchEvent(new Event('click')); }, 500); 
         }
     });
+
+    UI.gotoBedrockBtn.addEventListener('click', () => {
+        const region = UI.regionSelector.value;
+        if (!region) {
+            log('请先选择一个区域。', 'error');
+            return;
+        }
+        const url = `https://${region}.console.aws.amazon.com/bedrock/home?region=${region}#/modelaccess`;
+        log(`正在打开新标签页，前往 ${region} 区域的Bedrock控制台...`);
+        window.open(url, '_blank');
+    });
+
     UI.createEc2Btn.addEventListener('click', () => openInstanceTypeModal('ec2'));
     UI.createLsBtn.addEventListener('click', () => openInstanceTypeModal('lightsail'));
     UI.confirmEc2CreationBtn.addEventListener('click', () => createInstance('ec2'));
