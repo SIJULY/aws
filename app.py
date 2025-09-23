@@ -53,7 +53,7 @@ REGION_MAPPING = {
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s:%(name)s:%(message)s')
 task_logs = {}
 
-# ... (所有辅助函数、装饰器、后台任务等保持不变，为确保完整性，此处全部粘贴) ...
+# ... (其他所有辅助函数、装饰器、后台任务等保持不变) ...
 def get_boto_config(): return Config(connect_timeout=15, retries={'max_attempts': 2})
 def load_keys(keyfile):
     if not os.path.exists(keyfile): return []
@@ -211,31 +211,25 @@ def logout():
 @login_required
 def index(): return render_template("index.html")
 
-# 【已修改】账户管理API，增加翻页功能
 @app.route("/api/accounts", methods=["GET", "POST"])
 @login_required
 def manage_accounts():
     if request.method == "GET":
         page = request.args.get('page', 1, type=int)
         limit = request.args.get('limit', 5, type=int)
-        
         all_keys = load_keys(KEY_FILE)
-        all_keys.sort(key=lambda x: x['name']) # 排序
-
+        all_keys.sort(key=lambda x: x['name'])
         total_accounts = len(all_keys)
         total_pages = math.ceil(total_accounts / limit)
-        
         start = (page - 1) * limit
         end = start + limit
         paginated_keys = all_keys[start:end]
-
         return jsonify({
             "accounts": [{"name": k["name"]} for k in paginated_keys],
             "total_accounts": total_accounts,
             "total_pages": total_pages,
             "current_page": page
         })
-
     data = request.json; keys = load_keys(KEY_FILE)
     if any(k['name'] == data['name'] for k in keys): return jsonify({"error": "账户名称已存在"}), 400
     keys.append(data); save_keys(KEY_FILE, keys)
@@ -266,6 +260,7 @@ def aws_session():
     if 'account_name' in session: return jsonify({"logged_in": True, "name": session['account_name']})
     return jsonify({"logged_in": False})
 
+# 【已修改】get_regions函数，实现美国区域置顶
 @app.route("/api/regions")
 @login_required
 @aws_login_required
@@ -274,7 +269,14 @@ def get_regions():
         client = boto3.client('ec2', region_name='us-east-1', aws_access_key_id=g.aws_access_key_id, aws_secret_access_key=g.aws_secret_access_key, config=get_boto_config())
         response = client.describe_regions(AllRegions=True)
         regions = [{"code": r['RegionName'], "name": REGION_MAPPING.get(r['RegionName'], r['RegionName']), "enabled": r['OptInStatus'] in ['opt-in-not-required', 'opted-in']} for r in response['Regions']]
-        return jsonify(sorted(regions, key=lambda x: x['name']))
+        
+        # 定义优先置顶的区域列表
+        priority_regions = ['us-east-1', 'us-east-2', 'us-west-1', 'us-west-2']
+        
+        # 自定义排序：优先区域在前，其余按名称排序
+        sorted_regions = sorted(regions, key=lambda r: (0 if r['code'] in priority_regions else 1, r['name']))
+        
+        return jsonify(sorted_regions)
     except Exception as e: return jsonify({"error": handle_aws_error(e)}), 500
 
 @app.route("/api/instances")
@@ -398,7 +400,7 @@ def start_create_instance(service):
 @login_required
 @aws_login_required
 def start_activate_region():
-    region = request.json.get("region")
+    region = request.args.get("region")
     task_id = f"activate-{region}-{int(time.time())}"
     threading.Thread(target=activate_region_task, args=(task_id, g.aws_access_key_id, g.aws_secret_access_key, region)).start()
     return jsonify({"success": True, "task_id": task_id})
