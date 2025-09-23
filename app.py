@@ -13,7 +13,7 @@ PASSWORD = "1325"
 # --- 常量定义 ---
 KEY_FILE = "key.txt"
 QUOTA_CODE = 'L-1216C47A' # vCPU Quota
-BEDROCK_QUOTA_CODE = 'L-511172B7' 
+BEDROCK_QUOTA_CODE = 'L-511172B7' # Active provisioned throughputs per account
 QUOTA_REGION = 'us-east-1' 
 REGION_MAPPING = {
     "af-south-1": "af-south-1 (非洲（开普敦）)",
@@ -391,24 +391,21 @@ def query_bedrock_quota():
     account = next((k for k in keys if k['name'] == account_name), None)
     if not account: return jsonify({"error": "账户未找到"}), 404
     try:
-        # 步骤 1: 尝试一个基础 Bedrock API 调用来探测服务状态
         bedrock_client = boto3.client('bedrock', region_name=region, aws_access_key_id=account['access_key'], aws_secret_access_key=account['secret_key'], config=get_boto_config())
-        bedrock_client.list_foundation_models() # 如果这一步失败，说明服务不可用
-
-        # 步骤 2: 如果上一步成功，再查询配额
+        bedrock_client.list_foundation_models()
+        
         quota_client = boto3.client('service-quotas', region_name=region, aws_access_key_id=account['access_key'], aws_secret_access_key=account['secret_key'], config=get_boto_config())
         quota = quota_client.get_service_quota(ServiceCode='bedrock', QuotaCode=BEDROCK_QUOTA_CODE)
         return jsonify({"status": "ENABLED", "quota": int(quota['Quota']['Value'])})
 
     except ClientError as e:
         error_code = e.response.get("Error", {}).get("Code")
-        # 捕获特定的权限错误，这通常意味着服务需要手动启用
-        if error_code == 'AccessDeniedException':
+        # 【已修改】增加对 NoSuchResourceException 的判断
+        if error_code in ['AccessDeniedException', 'NoSuchResourceException']:
             return jsonify({"status": "NOT_ENABLED", "message": "需要申请模型访问权限"})
         else:
             return jsonify({"status": "ERROR", "message": f"查询失败: {error_code}"})
     except Exception as e:
-        # 捕获其他所有异常
         return jsonify({"status": "ERROR", "message": "查询失败，请检查区域支持情况"})
 
 @app.route("/api/instances/<service>", methods=["POST"])
