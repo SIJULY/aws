@@ -48,7 +48,7 @@
                 </div>
             </div>
             <div class="col-lg-7">
-                 <div class="card h-100">
+                 <div class="card h-100 d-flex flex-column">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <div>
                            <span>账户列表</span>
@@ -56,7 +56,7 @@
                         </div>
                         <button id="queryAllQuotasBtn" class="btn btn-sm btn-primary">一键查询所有配额</button>
                     </div>
-                    <div class="card-body p-0">
+                    <div class="card-body p-0 flex-grow-1">
                          <div class="table-responsive">
                             <table class="table table-striped table-hover mb-0">
                                 <thead>
@@ -72,6 +72,10 @@
                             </table>
                         </div>
                     </div>
+                    <div class="card-footer d-flex justify-content-center pt-3 pb-2">
+                        <nav id="pagination-nav">
+                            </nav>
+                    </div>
                 </div>
             </div>
         </div>
@@ -83,7 +87,7 @@
                 <div class="row g-3 align-items-center mb-3">
                     <div class="col-auto"><label for="regionSelector" class="col-form-label">选择区域:</label></div>
                     <div class="col"><select class="form-select" id="regionSelector" disabled><option>请先选择AWS账户</option></select></div>
-                    <div class="col-auto"><button id="activateRegionBtn" class="btn btn-warning" disabled>激活此区域</button></div>
+                    <div class="col-auto"><button id="activateRegionBtn" class="btn btn-secondary" disabled>激活此区域</button></div>
                 </div>
                 <h6>创建实例</h6>
                 <div class="btn-group w-100 mb-3">
@@ -123,8 +127,8 @@ fi
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span>实例信息</span>
                 <div class="btn-group">
-                    <button id="querySelectedRegionBtn" class="btn btn-sm btn-outline-primary" style="width: 130px;" disabled>查询选中区域</button>
-                    <button id="queryAllRegionsBtn" class="btn btn-sm btn-outline-secondary" style="width: 130px;" disabled>查询所有区域</button>
+                    <button id="querySelectedRegionBtn" class="btn btn-sm btn-outline-primary" disabled>查询选中区域</button>
+                    <button id="queryAllRegionsBtn" class="btn btn-sm btn-outline-secondary" disabled>查询所有区域</button>
                 </div>
             </div>
             <div class="card-body p-0">
@@ -137,7 +141,7 @@ fi
                                 <th>名称/ID</th>
                                 <th>状态</th>
                                 <th>公网IP</th>
-                                <th class="text-center" style="width: 285px;">操作</th>
+                                <th class="text-center" style="width: 280px;">操作</th>
                             </tr>
                         </thead>
                         <tbody id="instanceList">
