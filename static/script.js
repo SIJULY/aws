@@ -2,7 +2,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- 全局UI元素引用 ---
     const UI = {
         currentAccountStatus: document.getElementById('currentAccountStatus'),
-        manageAccountsBtn: document.getElementById('manageAccountsBtn'),
         saveAccountBtn: document.getElementById('saveAccountBtn'),
         accountList: document.getElementById('accountList'),
         queryAllQuotasBtn: document.getElementById('queryAllQuotasBtn'),
@@ -16,12 +15,10 @@ document.addEventListener('DOMContentLoaded', function() {
         instanceList: document.getElementById('instanceList'),
         logOutput: document.getElementById('logOutput'),
         clearLogBtn: document.getElementById('clearLogBtn'),
-        addAccountModal: new bootstrap.Modal(document.getElementById('addAccountModal')),
-        manageAccountsModal: new bootstrap.Modal(document.getElementById('manageAccountsModal')),
         ec2TypeModal: new bootstrap.Modal(document.getElementById('ec2TypeModal')),
         lightsailTypeModal: new bootstrap.Modal(document.getElementById('lightsailTypeModal')),
         ec2TypeSelector: document.getElementById('ec2TypeSelector'),
-        ec2DiskSize: document.getElementById('ec2DiskSize'), 
+        ec2DiskSize: document.getElementById('ec2DiskSize'),
         lightsailTypeSelector: document.getElementById('lightsailTypeSelector'),
         confirmEc2CreationBtn: document.getElementById('confirmEc2CreationBtn'),
         confirmLightsailCreationBtn: document.getElementById('confirmLightsailCreationBtn'),
@@ -90,18 +87,11 @@ document.addEventListener('DOMContentLoaded', function() {
         row.dataset.state = inst.state;
         const isRunning = inst.state === 'running';
         const isStopped = inst.state === 'stopped';
-        
-        // 【新增】仅当实例是EC2且正在运行时，才显示更换IP按钮
-        const changeIpButton = (inst.type === 'EC2' && isRunning)
-            ? `<button type="button" class="btn btn-info" data-action="change-ip">更换IP</button>`
-            : '';
-
         const buttonsHTML = `
             <div class="btn-group btn-group-sm" role="group">
                 <button type="button" class="btn btn-success" data-action="start" ${!isStopped ? 'disabled' : ''}>启动</button>
                 <button type="button" class="btn btn-warning" data-action="stop" ${!isRunning ? 'disabled' : ''}>停止</button>
                 <button type="button" class="btn btn-secondary" data-action="restart" ${!isRunning ? 'disabled' : ''}>重启</button>
-                ${changeIpButton}
                 <button type="button" class="btn btn-danger" data-action="delete" ${inst.type === 'EC2' && isRunning ? 'disabled' : ''}>删除</button>
             </div>`;
         row.innerHTML = `
@@ -120,17 +110,37 @@ document.addEventListener('DOMContentLoaded', function() {
         [UI.createEc2Btn, UI.createLsBtn, UI.querySelectedRegionBtn, UI.queryAllRegionsBtn, UI.regionSelector].forEach(el => el.disabled = !isAwsLoggedIn);
         UI.activateRegionBtn.disabled = true;
     };
+    
+    const loadAndRenderAccounts = async () => {
+        try {
+            const accounts = await apiCall('/api/accounts');
+            if (!accounts) return;
+            accounts.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+            UI.accountList.innerHTML = accounts.length ? accounts.map(acc => `
+                <tr data-account-name="${acc.name}">
+                    <td>${acc.name}</td>
+                    <td class="quota-cell text-center">--</td>
+                    <td class="text-center">
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-success" data-action="select">选择</button>
+                            <button class="btn btn-info" data-action="query-quota">查配额</button>
+                            <button class="btn btn-danger" data-action="delete">删除</button>
+                        </div>
+                    </td>
+                </tr>`).join('') : '<tr><td colspan="3" class="text-center">没有已保存的账户</td></tr>';
+            updateAwsLoginStatus();
+        } catch (error) { /* handled */ }
+    };
 
     const updateAwsLoginStatus = async () => {
         try {
             const data = await apiCall('/api/session');
             if (data && data.logged_in) {
-                UI.currentAccountStatus.innerHTML = `当前AWS账户: <span class="fw-bold text-success">${data.name}</span> <button id="awsLogoutBtn" class="btn btn-sm btn-outline-warning ms-2">切换</button>`;
-                document.getElementById('awsLogoutBtn').addEventListener('click', awsLogout);
+                UI.currentAccountStatus.innerHTML = `(当前: <span class="fw-bold text-success">${data.name}</span>)`;
                 setUIState(true);
                 loadRegions();
             } else {
-                UI.currentAccountStatus.innerHTML = `当前AWS账户: <span class="fw-bold text-danger">未选择</span>`;
+                UI.currentAccountStatus.innerHTML = `(<span class="fw-bold text-danger">未选择</span>)`;
                 setUIState(false);
                 UI.regionSelector.innerHTML = '<option>请先选择AWS账户</option>';
             }
@@ -148,14 +158,6 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) { /* handled */ }
     };
 
-    const awsLogout = async () => {
-        try {
-            await apiCall('/api/session', { method: 'DELETE' });
-            log('已切换AWS账户，请重新选择。', 'info');
-            updateAwsLoginStatus();
-        } catch(e) {/* handled */}
-    };
-
     const openInstanceTypeModal = async (type) => {
         const region = UI.regionSelector.value;
         const modal = (type === 'ec2') ? UI.ec2TypeModal : UI.lightsailTypeModal;
@@ -164,7 +166,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const endpoint = (type === 'ec2') ? `/api/ec2-instance-types?region=${region}` : `/api/lightsail-bundles?region=${region}`;
         
         if (type === 'ec2') {
-            UI.ec2DiskSize.value = ''; // 清空上次输入
+            UI.ec2DiskSize.value = '';
         }
 
         modal.show();
@@ -217,64 +219,56 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) { /* apiCall函数已处理日志 */ }
     };
 
-    const queryQuota = async (accountName) => {
+    const queryQuota = async (accountName, region) => {
         const row = UI.accountList.querySelector(`tr[data-account-name="${accountName}"]`);
         if (!row) return;
+        
+        if (!region) {
+            log('请先在下方“操作区域”中选择一个区域再查询配额。', 'error');
+            return;
+        }
+
         const quotaCell = row.querySelector('.quota-cell');
         quotaCell.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
+        log(`正在为账户 ${accountName} 查询区域 ${region} 的配额...`);
         try {
             const data = await apiCall('/api/query-quota', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ account_name: accountName })
+                body: JSON.stringify({ account_name: accountName, region: region })
             });
             if (data && data.quota !== undefined) {
-                quotaCell.textContent = data.quota; quotaCell.classList.add('fw-bold');
+                quotaCell.textContent = data.quota; 
+                quotaCell.classList.add('fw-bold');
+                log(`账户 ${accountName} 在区域 ${region} 的配额为: ${data.quota}`, 'success');
             } else {
                 quotaCell.textContent = `错误`;
+                log(`账户 ${accountName} 的配额查询未能返回有效数据。`, 'error');
             }
-        } catch (error) { quotaCell.textContent = '查询失败'; }
+        } catch (error) { 
+            quotaCell.textContent = '查询失败'; 
+        }
     };
 
     // --- 事件监听 ---
-    UI.manageAccountsBtn.addEventListener('click', async () => {
-        try {
-            const accounts = await apiCall('/api/accounts');
-            if (!accounts) return;
-            accounts.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
-            UI.accountList.innerHTML = accounts.length ? accounts.map(acc => `
-                <tr data-account-name="${acc.name}">
-                    <td>${acc.name}</td>
-                    <td class="quota-cell">--</td>
-                    <td class="text-center">
-                        <div class="btn-group btn-group-sm">
-                            <button class="btn btn-success" data-action="select">选择</button>
-                            <button class="btn btn-info" data-action="query-quota">查配额</button>
-                            <button class="btn btn-danger" data-action="delete">删除</button>
-                        </div>
-                    </td>
-                </tr>`).join('') : '<tr><td colspan="3" class="text-center">没有已保存的账户</td></tr>';
-            UI.manageAccountsModal.show();
-        } catch (error) { /* handled */ }
-    });
-
     UI.accountList.addEventListener('click', async (event) => {
         const button = event.target.closest('button[data-action]');
         if (!button) return;
         const action = button.dataset.action;
         const accountName = button.closest('tr').dataset.accountName;
+        
         if (action === 'select') {
+            log(`正在选择AWS账户 ${accountName}...`);
             await apiCall('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: accountName }) });
             log(`AWS账户 ${accountName} 选择成功。`, 'success');
-            UI.manageAccountsModal.hide();
             updateAwsLoginStatus();
         } else if (action === 'delete') {
             if (!confirm(`确定要删除AWS账户 ${accountName} 吗？`)) return;
             await apiCall(`/api/accounts/${accountName}`, { method: 'DELETE' });
             log(`AWS账户 ${accountName} 删除成功。`, 'success');
-            button.closest('tr').remove();
-            updateAwsLoginStatus();
+            loadAndRenderAccounts();
         } else if (action === 'query-quota') {
-            queryQuota(accountName);
+            const region = UI.regionSelector.value;
+            queryQuota(accountName, region);
         }
     });
 
@@ -288,19 +282,40 @@ document.addEventListener('DOMContentLoaded', function() {
             await apiCall('/api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, access_key, secret_key }) });
             log(`账户 ${name} 添加成功。`, 'success');
             form.reset();
-            UI.addAccountModal.hide();
+            loadAndRenderAccounts();
         } catch (error) { alert(`添加失败: ${error.message}`); }
     });
 
     UI.queryAllQuotasBtn.addEventListener('click', () => {
-        log('开始查询所有账户的配额...');
+        const region = UI.regionSelector.value;
+        if (!region || UI.regionSelector.disabled) {
+             log('请先选择一个账户和一个区域再执行此操作。', 'error');
+             return;
+        }
+        log(`开始为所有账户查询区域 ${region} 的配额...`);
         const rows = UI.accountList.querySelectorAll('tr[data-account-name]');
-        rows.forEach(row => { queryQuota(row.dataset.accountName); });
+        rows.forEach(row => { queryQuota(row.dataset.accountName, region); });
     });
 
     UI.regionSelector.addEventListener('change', () => {
         const selectedOption = UI.regionSelector.options[UI.regionSelector.selectedIndex];
-        if (selectedOption) { UI.activateRegionBtn.disabled = (selectedOption.dataset.enabled === 'true'); }
+        if (selectedOption) {
+            const isEnabled = (selectedOption.dataset.enabled === 'true');
+            
+            // 1. 设置按钮的可用状态
+            UI.activateRegionBtn.disabled = isEnabled;
+
+            // 2. 根据可用状态切换背景色类
+            if (isEnabled) {
+                // 如果区域已激活（按钮不可用），则移除黄色类，添加灰色类
+                UI.activateRegionBtn.classList.remove('btn-warning');
+                UI.activateRegionBtn.classList.add('btn-secondary');
+            } else {
+                // 如果区域未激活（按钮可用），则移除灰色类，添加黄色类
+                UI.activateRegionBtn.classList.remove('btn-secondary');
+                UI.activateRegionBtn.classList.add('btn-warning');
+            }
+        }
     });
 
     UI.activateRegionBtn.addEventListener('click', async () => {
@@ -346,7 +361,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const confirmText = {
             start: `确定要启动实例 ${instance.name}?`, stop: `确定要停止实例 ${instance.name}?`,
             restart: `确定要重启实例 ${instance.name}?`, delete: `【警告】此操作不可恢复！确定要永久删除实例 ${instance.name} 吗?`,
-            'change-ip': `确定要为实例 ${instance.name} 分配一个新的IP地址吗？这会产生少量费用，并自动释放旧IP。`
         };
         if (!confirm(confirmText[action])) return;
         log(`正在对实例 ${instance.name} 执行 ${action} 操作...`);
@@ -370,5 +384,5 @@ document.addEventListener('DOMContentLoaded', function() {
     UI.clearLogBtn.addEventListener('click', () => { UI.logOutput.innerHTML = ''; });
     
     // --- 初始化 ---
-    updateAwsLoginStatus();
+    loadAndRenderAccounts();
 });
