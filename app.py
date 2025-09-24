@@ -5,9 +5,7 @@ from flask import Flask, render_template, jsonify, request, session, g, redirect
 from functools import wraps
 
 app = Flask(__name__)
-# 【重要】请在这里设置您自己的固定Key
 app.secret_key = 'f9bade69a7e9423a9d0834921f855353'
-# 【重要】请在这里设置您自己的登录密码！
 PASSWORD = "1325"
 
 # --- 常量定义 ---
@@ -181,13 +179,13 @@ def query_all_instances_task(task_id, access_key, secret_key):
                 ec2_client = boto3.client('ec2', region_name=region, aws_access_key_id=access_key, aws_secret_access_key=secret_key, config=get_boto_config())
                 for r in ec2_client.describe_instances(Filters=[{'Name':'instance-state-name','Values':['pending','running','stopped']}])['Reservations']:
                     for i in r['Instances']:
-                        instance_data = {"type": "EC2", "region": region, "id": i['InstanceId'], "name": next((t['Value'] for t in i.get('Tags',[]) if t['Key'] == 'Name'), i['InstanceId']), "state": i['State']['Name'], "ip": i.get('PublicIpAddress', 'N/A')}
+                        instance_data = {"type": "EC2", "region": region, "id": i['InstanceId'], "name": next((t['Value'] for t in i.get('Tags',[]) if t['Key'] == 'Name'), i['InstanceId']), "state": i['State']['Name'], "ip": i.get('PublicIpAddress', 'N/A'), "launch_time": i.get('LaunchTime').isoformat() if i.get('LaunchTime') else None}
                         log_task(task_id, "FOUND_INSTANCE::" + json.dumps(instance_data)); total_found += 1
             except Exception as e: log_task(task_id, f"查询EC2实例失败({region}): {handle_aws_error(e)}")
             try:
                 lightsail_client = boto3.client('lightsail', region_name=region, aws_access_key_id=access_key, aws_secret_access_key=secret_key, config=get_boto_config())
                 for i in lightsail_client.get_instances()['instances']:
-                    instance_data = {"type": "Lightsail", "region": region, "id": i['name'], "name": i['name'], "state": i['state']['name'], "ip": i.get('publicIpAddress', 'N/A')}
+                    instance_data = {"type": "Lightsail", "region": region, "id": i['name'], "name": i['name'], "state": i['state']['name'], "ip": i.get('publicIpAddress', 'N/A'), "launch_time": i.get('createdAt').isoformat() if i.get('createdAt') else None}
                     log_task(task_id, "FOUND_INSTANCE::" + json.dumps(instance_data)); total_found += 1
             except Exception as e: log_task(task_id, f"查询Lightsail实例失败({region}): {handle_aws_error(e)}")
         log_task(task_id, f"所有区域查询完毕，共找到 {total_found} 个实例。"); log_task(task_id, "--- 任务完成 ---")
@@ -273,6 +271,7 @@ def get_regions():
         return jsonify(sorted_regions)
     except Exception as e: return jsonify({"error": handle_aws_error(e)}), 500
 
+# 【已修改】get_instances函数，增加返回 launch_time
 @app.route("/api/instances")
 @login_required
 @aws_login_required
@@ -281,11 +280,36 @@ def get_instances():
     if not region: return jsonify({"error": "必须提供区域参数"}), 400
     instances = []
     try:
+        # EC2
         ec2_client = boto3.client('ec2', region_name=region, aws_access_key_id=g.aws_access_key_id, aws_secret_access_key=g.aws_secret_access_key, config=get_boto_config())
         for r in ec2_client.describe_instances(Filters=[{'Name':'instance-state-name','Values':['pending','running','stopped']}])['Reservations']:
-            for i in r['Instances']: instances.append({"type": "EC2", "region": region, "id": i['InstanceId'], "name": next((t['Value'] for t in i.get('Tags',[]) if t['Key'] == 'Name'), i['InstanceId']), "state": i['State']['Name'], "ip": i.get('PublicIpAddress', 'N/A')})
+            for i in r['Instances']: 
+                instances.append({
+                    "type": "EC2", 
+                    "region": region, 
+                    "id": i['InstanceId'], 
+                    "name": next((t['Value'] for t in i.get('Tags',[]) if t['Key'] == 'Name'), i['InstanceId']), 
+                    "state": i['State']['Name'], 
+                    "ip": i.get('PublicIpAddress', 'N/A'),
+                    "launch_time": i.get('LaunchTime').isoformat() if i.get('LaunchTime') else None
+                })
+        
+        # Lightsail
+        lightsail_client = boto3.client('lightsail', region_name=region, aws_access_key_id=g.aws_access_key_id, aws_secret_access_key=g.aws_secret_access_key, config=get_boto_config())
+        for i in lightsail_client.get_instances()['instances']:
+            instances.append({
+                "type": "Lightsail",
+                "region": region,
+                "id": i['name'],
+                "name": i['name'],
+                "state": i['state']['name'],
+                "ip": i.get('publicIpAddress', 'N/A'),
+                "launch_time": i.get('createdAt').isoformat() if i.get('createdAt') else None
+            })
+
         return jsonify(instances)
     except Exception as e: return jsonify({"error": handle_aws_error(e)}), 500
+
 
 @app.route("/api/instance-action", methods=["POST"])
 @login_required
