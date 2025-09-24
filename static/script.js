@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
+    // UI元素引用
     const UI = {
         currentAccountStatus: document.getElementById('currentAccountStatus'),
         saveAccountBtn: document.getElementById('saveAccountBtn'),
@@ -34,6 +35,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentPage = 1;
     let selectedInstance = null;
 
+    // 辅助函数
     const log = (message, type = 'info') => {
         const now = new Date().toLocaleTimeString();
         const colorClass = type === 'error' ? 'text-danger' : (type === 'success' ? 'text-success' : 'text-warning');
@@ -55,7 +57,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 catch (e) { errorMsg = await response.text(); }
                 throw new Error(errorMsg);
             }
-            return await response.json();
+            const data = await response.json();
+            // 【新增】统一的错误日志记录
+            if (data.error) {
+                log(data.error, 'error');
+            }
+            return data;
         } catch (error) { log(error.message, 'error'); throw error; }
     };
 
@@ -97,7 +104,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <td class="text-center">${inst.ip}</td>
             <td class="text-center">${uptime}</td>
         `;
-        
+        row.style.cursor = 'pointer';
         row.addEventListener('click', () => {
             if (selectedInstance) {
                 selectedInstance.classList.remove('table-active');
@@ -123,7 +130,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!selectedInstance) {
             setButtonState(UI.startBtn, 'btn-success', false);
             setButtonState(UI.stopBtn, 'btn-warning', false);
-            setButtonState(UI.restartBtn, 'btn-secondary', false);
+            setButtonState(UI.restartBtn, 'btn-success', false);
             setButtonState(UI.changeIpBtn, 'btn-info', false);
             setButtonState(UI.deleteBtn, 'btn-danger', false);
             return;
@@ -141,6 +148,7 @@ document.addEventListener('DOMContentLoaded', function() {
         setButtonState(UI.changeIpBtn, 'btn-info', isRunning && type === 'EC2');
     };
 
+    // 【已修改】修正了发送给后端的字段名
     const handleActionClick = async (action) => {
         if (!selectedInstance) {
             log('错误：请先在列表中选择一个实例。', 'error');
@@ -162,19 +170,28 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!confirm(confirmText[action])) return;
         log(`正在对实例 ${instance.name} 执行 ${action} 操作...`);
         try {
+            const payload = {
+                action: action,
+                instance_id: instance.id,
+                region: instance.region,
+                instance_type: instance.type // 使用正确的字段名 instance_type
+            };
             const response = await apiCall('/api/instance-action', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: action, instance_id: instance.id, ...instance })
+                body: JSON.stringify(payload)
             });
-            if (!response) return;
-            log(response.message, 'success');
+            if (response && response.message) {
+                 log(response.message, 'success');
+            }
             setTimeout(() => UI.querySelectedRegionBtn.dispatchEvent(new Event('click')), 5000);
         } catch (error) {
+            // apiCall函数已经记录了错误日志
             setTimeout(() => UI.querySelectedRegionBtn.dispatchEvent(new Event('click')), 500);
         }
     };
     
+    // ... (其余所有函数和事件监听器保持不变) ...
     const setUIState = (isAwsLoggedIn) => {
         [UI.createEc2Btn, UI.createLsBtn, UI.querySelectedRegionBtn, UI.queryAllRegionsBtn, UI.regionSelector].forEach(el => el.disabled = !isAwsLoggedIn);
         UI.activateRegionBtn.disabled = true;
@@ -194,7 +211,6 @@ document.addEventListener('DOMContentLoaded', function() {
         paginationHTML += '</ul>';
         UI.paginationNav.innerHTML = paginationHTML;
     };
-    
     const loadAndRenderAccounts = async (page = 1) => {
         try {
             const data = await apiCall(`/api/accounts?page=${page}&limit=5`);
@@ -218,7 +234,6 @@ document.addEventListener('DOMContentLoaded', function() {
             UI.accountList.innerHTML = '<tr><td colspan="3" class="text-center text-danger">加载账户列表失败</td></tr>';
         }
     };
-    
     const updateAwsLoginStatus = async () => {
         try {
             const data = await apiCall('/api/session');
