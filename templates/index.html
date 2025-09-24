@@ -80,8 +80,30 @@
                 <div class="btn-group w-100 mb-3"><button id="createEc2Btn" class="btn btn-success" disabled>创建 EC2 实例</button><button id="createLsBtn" class="btn btn-info" disabled>创建 Lightsail 实例</button></div>
                 <h6>开机脚本 (User Data)</h6>
                 <textarea id="userData" class="form-control" rows="15">#!/bin/bash
-# ... (脚本内容无变化) ...
-</textarea>
+# 标记文件路径，确保脚本只运行一次
+FLAG_FILE="/etc/.user-data-executed"
+
+# 仅在实例首次启动时运行初始化操作
+if [ ! -f "$FLAG_FILE" ]; then
+    echo "--- Running First-Time Initialization ---"
+
+    # --- 步骤 1: 设置密码并配置 SSH  ---
+    echo "root:You22kme#12345" | sudo chpasswd
+    sudo sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/g' /etc/ssh/sshd_config
+    sudo sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+    sudo systemctl restart sshd || sudo service ssh restart
+
+    # --- 步骤 2: 安装节点脚本 (Xray & gost) ---
+    (wget -qO- https://raw.githubusercontent.com/SIJULY/xray/main/vless.sh | sed 's/\r//' | bash && \
+    wget -qO- https://raw.githubusercontent.com/SIJULY/xray/main/vmess.sh | sed 's/\r//' | bash && \
+    wget -qO- https://raw.githubusercontent.com/SIJULY/xray/main/Shadowsocks.sh | bash && \
+    wget -qO- https://raw.githubusercontent.com/SIJULY/xray/main/ss5.sh | bash) > /root/xray_install.log 2>&1
+
+    # --- 步骤 3: 创建标记文件，防止下次重启时再次执行 ---
+    sudo touch "$FLAG_FILE"
+    echo "--- First-Time Initialization Complete ---"
+fi
+                </textarea>
             </div>
         </div>
 
@@ -113,7 +135,7 @@
                 </div>
             </div>
             <div class="card-footer text-center">
-                <div class="d-flex justify-content-center gap-8" role="group">
+                <div class="d-flex justify-content-center gap-5" role="group">
                     <button type="button" id="startBtn" class="btn" disabled>启动实例</button>
                     <button type="button" id="stopBtn" class="btn" disabled>停止实例</button>
                     <button type="button" id="restartBtn" class="btn" disabled>重启实例</button>
