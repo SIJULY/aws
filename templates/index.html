@@ -14,6 +14,10 @@
         .table-hover tbody tr {
             cursor: pointer;
         }
+        /* 【新增/修改】为账户列表卡片的表格区域设置最小高度以防止跳动 */
+        .account-list-card .card-body {
+            min-height: 255px;
+        }
     </style>
 </head>
 <body>
@@ -28,7 +32,7 @@
         <hr>
         <div class="row mb-4">
             <div class="col-lg-5">
-                <div class="card h-100">
+                <div class="card">
                     <div class="card-header">添加新账户</div>
                     <div class="card-body">
                         <form id="addAccountForm">
@@ -41,7 +45,7 @@
                 </div>
             </div>
             <div class="col-lg-7">
-                 <div class="card h-100 d-flex flex-column" style="min-height: 350px;">
+                 <div class="card d-flex flex-column account-list-card">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <div><span>账户列表</span><small id="currentAccountStatus" class="ms-3 text-muted"></small></div>
                         <button id="queryAllQuotasBtn" class="btn btn-sm btn-primary">一键查询所有配额</button>
@@ -135,7 +139,7 @@ fi
                 </div>
             </div>
             <div class="card-footer text-center">
-                <div class="d-flex justify-content-center gap-3" role="group">
+                <div class="d-flex justify-content-center gap-5" role="group">
                     <button type="button" id="startBtn" class="btn btn-success" disabled>启动实例</button>
                     <button type="button" id="stopBtn" class="btn btn-warning" disabled>停止实例</button>
                     <button type="button" id="restartBtn" class="btn btn-secondary" disabled>重启实例</button>
