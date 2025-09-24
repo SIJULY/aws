@@ -136,7 +136,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         setButtonState(UI.startBtn, 'btn-success', isStopped);
         setButtonState(UI.stopBtn, 'btn-warning', isRunning);
-        setButtonState(UI.restartBtn, 'btn-secondary', isRunning);
+        setButtonState(UI.restartBtn, 'btn-success', isRunning);
         setButtonState(UI.deleteBtn, 'btn-danger', !(isRunning && type === 'EC2'));
         setButtonState(UI.changeIpBtn, 'btn-info', isRunning && type === 'EC2');
     };
