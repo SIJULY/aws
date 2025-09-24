@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // --- 全局UI元素引用 ---
+    // UI元素引用
     const UI = {
         currentAccountStatus: document.getElementById('currentAccountStatus'),
         saveAccountBtn: document.getElementById('saveAccountBtn'),
@@ -24,12 +24,18 @@ document.addEventListener('DOMContentLoaded', function() {
         confirmLightsailCreationBtn: document.getElementById('confirmLightsailCreationBtn'),
         ec2Spinner: document.getElementById('ec2Spinner'),
         lightsailSpinner: document.getElementById('lightsailSpinner'),
-        paginationNav: document.getElementById('pagination-nav'), 
+        paginationNav: document.getElementById('pagination-nav'),
+        startBtn: document.getElementById('startBtn'),
+        stopBtn: document.getElementById('stopBtn'),
+        restartBtn: document.getElementById('restartBtn'),
+        changeIpBtn: document.getElementById('changeIpBtn'),
+        deleteBtn: document.getElementById('deleteBtn'),
     };
     let logPollingInterval = null;
-    let currentPage = 1; 
+    let currentPage = 1;
+    let selectedInstance = null;
 
-    // --- 辅助函数 ---
+    // 辅助函数
     const log = (message, type = 'info') => {
         const now = new Date().toLocaleTimeString();
         const colorClass = type === 'error' ? 'text-danger' : (type === 'success' ? 'text-success' : 'text-warning');
@@ -55,29 +61,23 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) { log(error.message, 'error'); throw error; }
     };
 
-    const startLogPolling = (taskId, isQueryAll = false) => {
-        if (logPollingInterval) clearInterval(logPollingInterval);
-        log(`任务 ${taskId} 已启动...`);
-        if (isQueryAll) UI.instanceList.innerHTML = `<tr><td colspan="6" class="text-center">任务已启动, 正在获取实例列表... <div class="spinner-border spinner-border-sm"></div></td></tr>`;
-        let firstResult = isQueryAll;
-        logPollingInterval = setInterval(async () => {
-            try {
-                const data = await apiCall(`/api/task/${taskId}/logs`);
-                if (!data) return;
-                data.logs.forEach(logMessage => {
-                    if (logMessage.startsWith("FOUND_INSTANCE::")) {
-                        if (firstResult) { UI.instanceList.innerHTML = ''; firstResult = false; }
-                        renderInstanceRow(JSON.parse(logMessage.substring(16)));
-                    } else { log(logMessage); }
-                    if (logMessage.includes('--- 任务')) {
-                        clearInterval(logPollingInterval);
-                        logPollingInterval = null;
-                        log("日志轮询结束。");
-                        if (firstResult) { UI.instanceList.innerHTML = '<tr><td colspan="6" class="text-center text-muted">所有区域查询完毕，未找到实例</td></tr>'; }
-                    }
-                });
-            } catch (error) { clearInterval(logPollingInterval); }
-        }, 2500);
+    const formatDuration = (isoString) => {
+        if (!isoString) return 'N/A';
+        const launchTime = new Date(isoString);
+        const now = new Date();
+        let seconds = Math.floor((now - launchTime) / 1000);
+        if (seconds < 0) return '未来时间';
+        if (seconds < 60) return `${seconds} 秒`;
+        let days = Math.floor(seconds / (24 * 3600));
+        seconds %= (24 * 3600);
+        let hours = Math.floor(seconds / 3600);
+        seconds %= 3600;
+        let minutes = Math.floor(seconds / 60);
+        let result = '';
+        if (days > 0) result += `${days}天 `;
+        if (hours > 0) result += `${hours}小时 `;
+        if (minutes > 0) result += `${minutes}分钟`;
+        return result.trim() || '刚刚启动';
     };
 
     const renderInstanceRow = (inst) => {
@@ -87,36 +87,85 @@ document.addEventListener('DOMContentLoaded', function() {
         row.dataset.region = inst.region;
         row.dataset.type = inst.type;
         row.dataset.state = inst.state;
+        
+        const uptime = (inst.state === 'running' || inst.state === 'pending') ? formatDuration(inst.launch_time) : '已停止';
         const isRunning = inst.state === 'running';
-        const isStopped = inst.state === 'stopped';
-        const changeIpButton = (inst.type === 'EC2' && isRunning)
-            ? `<button type="button" class="btn btn-info btn-sm" data-action="change-ip" style="white-space: nowrap;">更换IP</button>`
-            : '';
-        const buttonsHTML = `
-            <div class="btn-group btn-group-sm" role="group">
-                <button type="button" class="btn btn-success" data-action="start" style="white-space: nowrap;" ${!isStopped ? 'disabled' : ''}>启动</button>
-                <button type="button" class="btn btn-warning" data-action="stop" style="white-space: nowrap;" ${!isRunning ? 'disabled' : ''}>停止</button>
-                <button type="button" class="btn btn-secondary" data-action="restart" style="white-space: nowrap;" ${!isRunning ? 'disabled' : ''}>重启</button>
-                ${changeIpButton}
-                <button type="button" class="btn btn-danger" data-action="delete" style="white-space: nowrap;" ${inst.type === 'EC2' && isRunning ? 'disabled' : ''}>删除</button>
-            </div>`;
+
         row.innerHTML = `
             <td><span class="badge bg-${inst.type === 'EC2' ? 'success' : 'info'}">${inst.type}</span></td>
             <td>${inst.region}</td>
             <td>${inst.name || inst.id}</td>
-            <td><span class="badge bg-${isRunning ? 'success' : 'secondary'}">${inst.state}</span></td>
+            <td><span class="badge bg-${isRunning ? 'success' : (inst.state === 'stopped' ? 'secondary' : 'warning')}">${inst.state}</span></td>
             <td>${inst.ip}</td>
-            <td class="text-center">${buttonsHTML}</td>`;
-        const existingRow = UI.instanceList.querySelector(`tr[data-id="${inst.id}"]`);
-        if (existingRow) { existingRow.replaceWith(row); }
-        else { UI.instanceList.appendChild(row); }
+            <td>${uptime}</td>
+        `;
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', () => {
+            if (selectedInstance) {
+                selectedInstance.classList.remove('table-active');
+            }
+            row.classList.add('table-active');
+            selectedInstance = row;
+            updateActionButtonsState();
+        });
+        UI.instanceList.appendChild(row);
     };
 
+    const updateActionButtonsState = () => {
+        if (!selectedInstance) {
+            [UI.startBtn, UI.stopBtn, UI.restartBtn, UI.changeIpBtn, UI.deleteBtn].forEach(btn => btn.disabled = true);
+            return;
+        }
+        const state = selectedInstance.dataset.state;
+        const type = selectedInstance.dataset.type;
+        const isRunning = state === 'running';
+        const isStopped = state === 'stopped';
+
+        UI.startBtn.disabled = !isStopped;
+        UI.stopBtn.disabled = !isRunning;
+        UI.restartBtn.disabled = !isRunning;
+        UI.deleteBtn.disabled = isRunning && type === 'EC2';
+        UI.changeIpBtn.disabled = !(isRunning && type === 'EC2');
+    };
+
+    const handleActionClick = async (action) => {
+        if (!selectedInstance) {
+            log('错误：请先在列表中选择一个实例。', 'error');
+            return;
+        }
+        const instance = {
+            id: selectedInstance.dataset.id,
+            name: selectedInstance.dataset.name,
+            region: selectedInstance.dataset.region,
+            type: selectedInstance.dataset.type,
+        };
+        const confirmText = {
+            start: `确定要启动实例 ${instance.name}?`,
+            stop: `确定要停止实例 ${instance.name}?`,
+            restart: `确定要重启实例 ${instance.name}?`,
+            delete: `【警告】此操作不可恢复！确定要永久删除实例 ${instance.name} 吗?`,
+            'change-ip': `确定要为实例 ${instance.name} 分配一个新的IP地址吗？这会产生少量费用，并自动释放旧IP。`
+        };
+        if (!confirm(confirmText[action])) return;
+        log(`正在对实例 ${instance.name} 执行 ${action} 操作...`);
+        try {
+            const response = await apiCall('/api/instance-action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: action, instance_id: instance.id, ...instance })
+            });
+            if (!response) return;
+            log(response.message, 'success');
+            setTimeout(() => UI.querySelectedRegionBtn.dispatchEvent(new Event('click')), 5000);
+        } catch (error) {
+            setTimeout(() => UI.querySelectedRegionBtn.dispatchEvent(new Event('click')), 500);
+        }
+    };
+    
     const setUIState = (isAwsLoggedIn) => {
         [UI.createEc2Btn, UI.createLsBtn, UI.querySelectedRegionBtn, UI.queryAllRegionsBtn, UI.regionSelector].forEach(el => el.disabled = !isAwsLoggedIn);
         UI.activateRegionBtn.disabled = true;
     };
-
     const renderPagination = (totalPages, currentPage) => {
         UI.paginationNav.innerHTML = '';
         if (totalPages <= 1) return;
@@ -132,7 +181,8 @@ document.addEventListener('DOMContentLoaded', function() {
         paginationHTML += '</ul>';
         UI.paginationNav.innerHTML = paginationHTML;
     };
-    
+
+    // 【已修改】账户列表按钮的HTML生成部分
     const loadAndRenderAccounts = async (page = 1) => {
         try {
             const data = await apiCall(`/api/accounts?page=${page}&limit=5`);
@@ -143,10 +193,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     <td>${acc.name}</td>
                     <td class="quota-cell text-center">--</td>
                     <td class="text-center">
-                        <div class="btn-group btn-group-sm">
-                            <button class="btn btn-success" data-action="select">选择</button>
-                            <button class="btn btn-info" data-action="query-quota">查配额</button>
-                            <button class="btn btn-danger" data-action="delete">删除</button>
+                        <div class="d-flex justify-content-center gap-1">
+                            <button class="btn btn-success btn-sm" data-action="select">选择</button>
+                            <button class="btn btn-info btn-sm" data-action="query-quota">查配额</button>
+                            <button class="btn btn-danger btn-sm" data-action="delete">删除</button>
                         </div>
                     </td>
                 </tr>`).join('') : '<tr><td colspan="3" class="text-center">没有已保存的账户</td></tr>';
@@ -250,14 +300,11 @@ document.addEventListener('DOMContentLoaded', function() {
             quotaCell.textContent = '查询失败'; 
         }
     };
-
-    // --- 事件监听 ---
     UI.accountList.addEventListener('click', async (event) => {
         const button = event.target.closest('button[data-action]');
         if (!button) return;
         const action = button.dataset.action;
         const accountName = button.closest('tr').dataset.accountName;
-        
         if (action === 'select') {
             log(`正在选择AWS账户 ${accountName}...`);
             await apiCall('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: accountName }) });
@@ -273,7 +320,6 @@ document.addEventListener('DOMContentLoaded', function() {
             queryQuota(accountName, region);
         }
     });
-
     UI.saveAccountBtn.addEventListener('click', async () => {
         const form = document.getElementById('addAccountForm');
         const name = document.getElementById('accountName').value;
@@ -287,7 +333,6 @@ document.addEventListener('DOMContentLoaded', function() {
             loadAndRenderAccounts(1);
         } catch (error) { alert(`添加失败: ${error.message}`); }
     });
-    
     UI.paginationNav.addEventListener('click', (event) => {
         event.preventDefault();
         const link = event.target.closest('a.page-link');
@@ -298,7 +343,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
-    
     UI.queryAllQuotasBtn.addEventListener('click', () => {
         const region = UI.regionSelector.value;
         if (!region || UI.regionSelector.disabled) { log('请先选择一个账户和一个区域再执行此操作。', 'error'); return; }
@@ -309,7 +353,6 @@ document.addEventListener('DOMContentLoaded', function() {
             queryQuota(accountName, region);
         });
     });
-
     UI.regionSelector.addEventListener('change', () => {
         const selectedOption = UI.regionSelector.options[UI.regionSelector.selectedIndex];
         if (selectedOption) {
@@ -329,60 +372,43 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!region || UI.activateRegionBtn.disabled) return;
         if (!confirm(`确定要激活区域 ${region} 吗？`)) return;
         try {
-            const data = await apiCall('/api/activate-region', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ region }) });
+            const data = await apiCall(`/api/activate-region', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ region }) });
             if(data && data.task_id) startLogPolling(data.task_id);
         } catch(e) {}
     });
-    UI.querySelectedRegionBtn.addEventListener('click', async () => {
+    UI.querySelectedRegionBtn.addEventListener('click', () => {
+        selectedInstance = null;
+        updateActionButtonsState();
         const region = UI.regionSelector.value;
         log(`正在查询区域 ${region} 的实例...`);
         UI.instanceList.innerHTML = `<tr><td colspan="6" class="text-center">查询中... <div class="spinner-border spinner-border-sm"></div></td></tr>`;
         try {
-            const instances = await apiCall(`/api/instances?region=${region}`);
-            UI.instanceList.innerHTML = '';
-            if (instances && instances.length > 0) {
-                instances.forEach(renderInstanceRow);
-            } else {
-                 UI.instanceList.innerHTML = `<tr><td colspan="6" class="text-center text-muted">该区域无实例</td></tr>`;
-            }
-            log(`区域 ${region} 查询完成。`, 'success');
+            const instances = apiCall(`/api/instances?region=${region}`);
+            instances.then(data => {
+                UI.instanceList.innerHTML = '';
+                if (data && data.length > 0) {
+                    data.forEach(renderInstanceRow);
+                } else {
+                    UI.instanceList.innerHTML = `<tr><td colspan="6" class="text-center text-muted">该区域无实例</td></tr>`;
+                }
+                log(`区域 ${region} 查询完成。`, 'success');
+            });
         } catch(error) { UI.instanceList.innerHTML = `<tr><td colspan="6" class="text-center text-danger">查询失败: ${error.message}</td></tr>`; }
     });
-    UI.queryAllRegionsBtn.addEventListener('click', async () => {
+    UI.queryAllRegionsBtn.addEventListener('click', () => {
+        selectedInstance = null;
+        updateActionButtonsState();
         log("即将查询所有区域，过程可能较慢，请稍候...");
         try {
-            const data = await apiCall('/api/query-all-instances', { method: 'POST' });
-            if(data && data.task_id) startLogPolling(data.task_id, true);
+            const data = apiCall('/api/query-all-instances', { method: 'POST' });
+            data.then(d => { if(d && d.task_id) startLogPolling(d.task_id, true); });
         } catch(error) { /* handled */ }
     });
-    UI.instanceList.addEventListener('click', async (event) => {
-        const button = event.target.closest('button[data-action]');
-        if (!button || button.disabled) return;
-        const action = button.dataset.action;
-        const row = button.closest('tr');
-        const instance = { id: row.dataset.id, name: row.dataset.name, region: row.dataset.region, type: row.dataset.type, };
-        const confirmText = {
-            start: `确定要启动实例 ${instance.name}?`, stop: `确定要停止实例 ${instance.name}?`,
-            restart: `确定要重启实例 ${instance.name}?`, delete: `【警告】此操作不可恢复！确定要永久删除实例 ${instance.name} 吗?`,
-            'change-ip': `确定要为实例 ${instance.name} 分配一个新的IP地址吗？这会产生少量费用，并自动释放旧IP。`
-        };
-        if (confirmText[action] && !confirm(confirmText[action])) return;
-        log(`正在对实例 ${instance.name} 执行 ${action} 操作...`);
-        button.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
-        button.disabled = true;
-        try {
-            const response = await apiCall('/api/instance-action', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action, region: instance.region, instance_id: instance.id, instance_type: instance.type, })
-            });
-            if (!response) return;
-            log(response.message, 'success');
-            setTimeout(() => { UI.querySelectedRegionBtn.dispatchEvent(new Event('click')); }, 3000);
-        } catch(error) { 
-            setTimeout(() => { UI.querySelectedRegionBtn.dispatchEvent(new Event('click')); }, 500); 
-        }
-    });
-
+    UI.startBtn.addEventListener('click', () => handleActionClick('start'));
+    UI.stopBtn.addEventListener('click', () => handleActionClick('stop'));
+    UI.restartBtn.addEventListener('click', () => handleActionClick('restart'));
+    UI.changeIpBtn.addEventListener('click', () => handleActionClick('change-ip'));
+    UI.deleteBtn.addEventListener('click', () => handleActionClick('delete'));
     UI.createEc2Btn.addEventListener('click', () => openInstanceTypeModal('ec2'));
     UI.createLsBtn.addEventListener('click', () => openInstanceTypeModal('lightsail'));
     UI.confirmEc2CreationBtn.addEventListener('click', () => createInstance('ec2'));
