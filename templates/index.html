@@ -7,6 +7,11 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .table-hover tbody tr.table-active {
+            background-color: #dbeafe;
+        }
+    </style>
 </head>
 <body>
     <div class="container mt-4 mb-5">
@@ -17,32 +22,17 @@
             </div>
             <a href="/logout" class="btn btn-outline-danger btn-sm">登出</a>
         </div>
-        
         <hr>
-
         <div class="row mb-4">
             <div class="col-lg-5">
                 <div class="card h-100">
-                    <div class="card-header">
-                        添加新账户
-                    </div>
+                    <div class="card-header">添加新账户</div>
                     <div class="card-body">
                         <form id="addAccountForm">
-                            <div class="mb-3">
-                                <label for="accountName" class="form-label">账户名称</label>
-                                <input type="text" class="form-control" id="accountName" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="accessKey" class="form-label">Access Key ID</label>
-                                <input type="text" class="form-control" id="accessKey" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="secretKey" class="form-label">Secret Access Key</label>
-                                <input type="password" class="form-control" id="secretKey" required>
-                            </div>
-                            <div class="d-grid">
-                                <button type="button" id="saveAccountBtn" class="btn btn-primary">保存账户</button>
-                            </div>
+                            <div class="mb-3"><label for="accountName" class="form-label">账户名称</label><input type="text" class="form-control" id="accountName" required></div>
+                            <div class="mb-3"><label for="accessKey" class="form-label">Access Key ID</label><input type="text" class="form-control" id="accessKey" required></div>
+                            <div class="mb-3"><label for="secretKey" class="form-label">Secret Access Key</label><input type="password" class="form-control" id="secretKey" required></div>
+                            <div class="d-grid"><button type="button" id="saveAccountBtn" class="btn btn-primary">保存账户</button></div>
                         </form>
                     </div>
                 </div>
@@ -50,10 +40,7 @@
             <div class="col-lg-7">
                  <div class="card h-100 d-flex flex-column">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <div>
-                           <span>账户列表</span>
-                           <small id="currentAccountStatus" class="ms-3 text-muted"></small>
-                        </div>
+                        <div><span>账户列表</span><small id="currentAccountStatus" class="ms-3 text-muted"></small></div>
                         <button id="queryAllQuotasBtn" class="btn btn-sm btn-primary">一键查询所有配额</button>
                     </div>
                     <div class="card-body p-0 flex-grow-1">
@@ -73,31 +60,21 @@
                         </div>
                     </div>
                     <div class="card-footer d-flex justify-content-center pt-3 pb-2">
-                        <nav id="pagination-nav">
-                        </nav>
+                        <nav id="pagination-nav"></nav>
                     </div>
                 </div>
             </div>
         </div>
-
-
         <div class="card mb-4">
             <div class="card-header">操作区域</div>
             <div class="card-body">
                 <div class="row g-3 align-items-center mb-3">
                     <div class="col-auto"><label for="regionSelector" class="col-form-label">选择区域:</label></div>
                     <div class="col"><select class="form-select" id="regionSelector" disabled><option>请先选择AWS账户</option></select></div>
-                    <div class="col-auto">
-                        <div class="btn-group">
-                            <button id="activateRegionBtn" class="btn btn-sm btn-secondary" disabled>激活此区域</button>
-                        </div>
-                    </div>
+                    <div class="col-auto"><div class="btn-group"><button id="activateRegionBtn" class="btn btn-sm btn-secondary" disabled>激活此区域</button></div></div>
                 </div>
                 <h6>创建实例</h6>
-                <div class="btn-group w-100 mb-3">
-                    <button id="createEc2Btn" class="btn btn-success" disabled>创建 EC2 实例</button>
-                    <button id="createLsBtn" class="btn btn-info" disabled>创建 Lightsail 实例</button>
-                </div>
+                <div class="btn-group w-100 mb-3"><button id="createEc2Btn" class="btn btn-success" disabled>创建 EC2 实例</button><button id="createLsBtn" class="btn btn-info" disabled>创建 Lightsail 实例</button></div>
                 <h6>开机脚本 (User Data)</h6>
                 <textarea id="userData" class="form-control" rows="15">#!/bin/bash
 # 标记文件路径，确保脚本只运行一次
@@ -131,13 +108,13 @@ fi
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span>实例信息</span>
                 <div class="btn-group">
-                    <button id="querySelectedRegionBtn" class="btn btn-sm btn-outline-primary" style="width: 130px;" disabled>查询选中区域</button>
-                    <button id="queryAllRegionsBtn" class="btn btn-sm btn-outline-secondary" style="width: 130px;" disabled>查询所有区域</button>
+                    <button id="querySelectedRegionBtn" class="btn btn-sm btn-outline-primary" disabled>查询选中区域</button>
+                    <button id="queryAllRegionsBtn" class="btn btn-sm btn-outline-secondary" disabled>查询所有区域</button>
                 </div>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-striped table-hover mb-0">
+                    <table class="table table-hover mb-0">
                         <thead>
                             <tr>
                                 <th>类型</th>
@@ -145,13 +122,22 @@ fi
                                 <th>名称/ID</th>
                                 <th>状态</th>
                                 <th>公网IP</th>
-                                <th class="text-center" style="width: 280px;">操作</th>
+                                <th>运行时间</th>
                             </tr>
                         </thead>
                         <tbody id="instanceList">
                             <tr><td colspan="6" class="text-center text-muted">请先查询实例</td></tr>
                         </tbody>
                     </table>
+                </div>
+            </div>
+            <div class="card-footer text-center">
+                <div class="d-flex justify-content-center gap-3" role="group">
+                    <button type="button" id="startBtn" class="btn btn-success" disabled>启动实例</button>
+                    <button type="button" id="stopBtn" class="btn btn-warning" disabled>停止实例</button>
+                    <button type="button" id="restartBtn" class="btn btn-secondary" disabled>重启实例</button>
+                    <button type="button" id="changeIpBtn" class="btn btn-info" disabled>更换IP</button>
+                    <button type="button" id="deleteBtn" class="btn btn-danger" disabled>删除实例</button>
                 </div>
             </div>
         </div>
@@ -161,12 +147,10 @@ fi
                 日志输出
                 <button id="clearLogBtn" class="btn btn-sm btn-outline-danger">清除日志</button>
             </div>
-            <div class="card-body p-2">
-                <pre id="logOutput" class="form-control mb-0" style="height: 200px;"></pre>
-            </div>
+            <div class="card-body p-2"><pre id="logOutput" class="form-control mb-0" style="height: 200px;"></pre></div>
         </div>
     </div>
-
+    
     <div class="modal fade" id="ec2TypeModal" tabindex="-1">
         <div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">选择 EC2 实例类型</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div id="ec2Spinner" class="text-center" style="display: none;"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></div><select id="ec2TypeSelector" class="form-select"></select><div class="mt-3"><label for="ec2DiskSize" class="form-label">根卷硬盘大小 (GB)</label><input type="number" class="form-control" id="ec2DiskSize" placeholder="留空则使用AMI默认大小"><div class="form-text">输入整数, 如 30。留空则使用官方默认大小。</div></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button type="button" id="confirmEc2CreationBtn" class="btn btn-primary">确认开启</button></div></div></div>
     </div>
