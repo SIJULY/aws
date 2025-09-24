@@ -35,7 +35,6 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentPage = 1;
     let selectedInstance = null;
 
-    // 辅助函数
     const log = (message, type = 'info') => {
         const now = new Date().toLocaleTimeString();
         const colorClass = type === 'error' ? 'text-danger' : (type === 'success' ? 'text-success' : 'text-warning');
@@ -181,47 +180,24 @@ document.addEventListener('DOMContentLoaded', function() {
         paginationHTML += '</ul>';
         UI.paginationNav.innerHTML = paginationHTML;
     };
-
-    // 【已修改】增加了“占位行”逻辑
+    
     const loadAndRenderAccounts = async (page = 1) => {
         try {
             const data = await apiCall(`/api/accounts?page=${page}&limit=5`);
             if (!data) return;
             currentPage = data.current_page;
-            
-            let tableHTML = '';
-            const accounts = data.accounts;
-
-            if (accounts.length > 0) {
-                tableHTML = accounts.map(acc => `
-                    <tr data-account-name="${acc.name}">
-                        <td>${acc.name}</td>
-                        <td class="quota-cell text-center">--</td>
-                        <td class="text-center">
-                            <div class="d-flex justify-content-center gap-1">
-                                <button class="btn btn-success btn-sm" data-action="select">选择</button>
-                                <button class="btn btn-info btn-sm" data-action="query-quota">查配额</button>
-                                <button class="btn btn-danger btn-sm" data-action="delete">删除</button>
-                            </div>
-                        </td>
-                    </tr>`).join('');
-            }
-
-            // 【新增逻辑】计算并添加占位行
-            const placeholdersNeeded = 5 - accounts.length;
-            if (placeholdersNeeded > 0) {
-                for (let i = 0; i < placeholdersNeeded; i++) {
-                    // 添加一个有内容但不可见的占位行，以确保它能撑开高度
-                    tableHTML += `<tr><td colspan="3" style="visibility: hidden;">&nbsp;</td></tr>`;
-                }
-            }
-
-            // 如果没有任何真实账户，显示提示信息
-            if (accounts.length === 0) {
-                tableHTML = '<tr><td colspan="3" class="text-center text-muted">没有已保存的账户</td></tr>';
-            }
-
-            UI.accountList.innerHTML = tableHTML;
+            UI.accountList.innerHTML = data.accounts.length ? data.accounts.map(acc => `
+                <tr data-account-name="${acc.name}">
+                    <td>${acc.name}</td>
+                    <td class="quota-cell text-center">--</td>
+                    <td class="text-center">
+                        <div class="d-flex justify-content-center gap-1">
+                            <button class="btn btn-success btn-sm" data-action="select">选择</button>
+                            <button class="btn btn-info btn-sm" data-action="query-quota">查配额</button>
+                            <button class="btn btn-danger btn-sm" data-action="delete">删除</button>
+                        </div>
+                    </td>
+                </tr>`).join('') : '<tr><td colspan="3" class="text-center">没有已保存的账户</td></tr>';
             renderPagination(data.total_pages, data.current_page);
             updateAwsLoginStatus();
         } catch (error) {
