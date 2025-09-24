@@ -1,5 +1,4 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // UI元素引用
     const UI = {
         currentAccountStatus: document.getElementById('currentAccountStatus'),
         saveAccountBtn: document.getElementById('saveAccountBtn'),
@@ -92,13 +91,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
         row.innerHTML = `
             <td><span class="badge bg-${inst.type === 'EC2' ? 'success' : 'info'}">${inst.type}</span></td>
-            <td>${inst.region}</td>
-            <td>${inst.name || inst.id}</td>
-            <td><span class="badge bg-${isRunning ? 'success' : (inst.state === 'stopped' ? 'secondary' : 'warning')}">${inst.state}</span></td>
-            <td>${inst.ip}</td>
-            <td>${uptime}</td>
+            <td class="text-center">${inst.region}</td>
+            <td class="text-center">${inst.name || inst.id}</td>
+            <td class="text-center"><span class="badge bg-${isRunning ? 'success' : (inst.state === 'stopped' ? 'secondary' : 'warning')}">${inst.state}</span></td>
+            <td class="text-center">${inst.ip}</td>
+            <td class="text-center">${uptime}</td>
         `;
-        row.style.cursor = 'pointer';
+        
         row.addEventListener('click', () => {
             if (selectedInstance) {
                 selectedInstance.classList.remove('table-active');
@@ -111,20 +110,35 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     const updateActionButtonsState = () => {
+        const setButtonState = (button, activeClass, isEnabled) => {
+            button.disabled = !isEnabled;
+            button.classList.remove('btn-success', 'btn-warning', 'btn-secondary', 'btn-info', 'btn-danger');
+            if (isEnabled) {
+                button.classList.add(activeClass);
+            } else {
+                button.classList.add('btn-secondary');
+            }
+        };
+
         if (!selectedInstance) {
-            [UI.startBtn, UI.stopBtn, UI.restartBtn, UI.changeIpBtn, UI.deleteBtn].forEach(btn => btn.disabled = true);
+            setButtonState(UI.startBtn, 'btn-success', false);
+            setButtonState(UI.stopBtn, 'btn-warning', false);
+            setButtonState(UI.restartBtn, 'btn-secondary', false);
+            setButtonState(UI.changeIpBtn, 'btn-info', false);
+            setButtonState(UI.deleteBtn, 'btn-danger', false);
             return;
         }
+
         const state = selectedInstance.dataset.state;
         const type = selectedInstance.dataset.type;
         const isRunning = state === 'running';
         const isStopped = state === 'stopped';
 
-        UI.startBtn.disabled = !isStopped;
-        UI.stopBtn.disabled = !isRunning;
-        UI.restartBtn.disabled = !isRunning;
-        UI.deleteBtn.disabled = isRunning && type === 'EC2';
-        UI.changeIpBtn.disabled = !(isRunning && type === 'EC2');
+        setButtonState(UI.startBtn, 'btn-success', isStopped);
+        setButtonState(UI.stopBtn, 'btn-warning', isRunning);
+        setButtonState(UI.restartBtn, 'btn-secondary', isRunning);
+        setButtonState(UI.deleteBtn, 'btn-danger', !(isRunning && type === 'EC2'));
+        setButtonState(UI.changeIpBtn, 'btn-info', isRunning && type === 'EC2');
     };
 
     const handleActionClick = async (action) => {
