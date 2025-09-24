@@ -11,6 +11,9 @@
         .table-hover tbody tr.table-active {
             background-color: #dbeafe;
         }
+        .table-hover tbody tr {
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -38,7 +41,7 @@
                 </div>
             </div>
             <div class="col-lg-7">
-                 <div class="card h-100 d-flex flex-column">
+                 <div class="card h-100 d-flex flex-column" style="min-height: 350px;">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <div><span>账户列表</span><small id="currentAccountStatus" class="ms-3 text-muted"></small></div>
                         <button id="queryAllQuotasBtn" class="btn btn-sm btn-primary">一键查询所有配额</button>
