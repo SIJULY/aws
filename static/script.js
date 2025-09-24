@@ -182,24 +182,46 @@ document.addEventListener('DOMContentLoaded', function() {
         UI.paginationNav.innerHTML = paginationHTML;
     };
 
-    // 【已修改】账户列表按钮的HTML生成部分
+    // 【已修改】增加了“占位行”逻辑
     const loadAndRenderAccounts = async (page = 1) => {
         try {
             const data = await apiCall(`/api/accounts?page=${page}&limit=5`);
             if (!data) return;
             currentPage = data.current_page;
-            UI.accountList.innerHTML = data.accounts.length ? data.accounts.map(acc => `
-                <tr data-account-name="${acc.name}">
-                    <td>${acc.name}</td>
-                    <td class="quota-cell text-center">--</td>
-                    <td class="text-center">
-                        <div class="d-flex justify-content-center gap-1">
-                            <button class="btn btn-success btn-sm" data-action="select">选择</button>
-                            <button class="btn btn-info btn-sm" data-action="query-quota">查配额</button>
-                            <button class="btn btn-danger btn-sm" data-action="delete">删除</button>
-                        </div>
-                    </td>
-                </tr>`).join('') : '<tr><td colspan="3" class="text-center">没有已保存的账户</td></tr>';
+            
+            let tableHTML = '';
+            const accounts = data.accounts;
+
+            if (accounts.length > 0) {
+                tableHTML = accounts.map(acc => `
+                    <tr data-account-name="${acc.name}">
+                        <td>${acc.name}</td>
+                        <td class="quota-cell text-center">--</td>
+                        <td class="text-center">
+                            <div class="d-flex justify-content-center gap-1">
+                                <button class="btn btn-success btn-sm" data-action="select">选择</button>
+                                <button class="btn btn-info btn-sm" data-action="query-quota">查配额</button>
+                                <button class="btn btn-danger btn-sm" data-action="delete">删除</button>
+                            </div>
+                        </td>
+                    </tr>`).join('');
+            }
+
+            // 【新增逻辑】计算并添加占位行
+            const placeholdersNeeded = 5 - accounts.length;
+            if (placeholdersNeeded > 0) {
+                for (let i = 0; i < placeholdersNeeded; i++) {
+                    // 添加一个有内容但不可见的占位行，以确保它能撑开高度
+                    tableHTML += `<tr><td colspan="3" style="visibility: hidden;">&nbsp;</td></tr>`;
+                }
+            }
+
+            // 如果没有任何真实账户，显示提示信息
+            if (accounts.length === 0) {
+                tableHTML = '<tr><td colspan="3" class="text-center text-muted">没有已保存的账户</td></tr>';
+            }
+
+            UI.accountList.innerHTML = tableHTML;
             renderPagination(data.total_pages, data.current_page);
             updateAwsLoginStatus();
         } catch (error) {
@@ -372,7 +394,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!region || UI.activateRegionBtn.disabled) return;
         if (!confirm(`确定要激活区域 ${region} 吗？`)) return;
         try {
-            const data = await apiCall(`/api/activate-region', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ region }) });
+            const data = await apiCall('/api/activate-region', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ region }) });
             if(data && data.task_id) startLogPolling(data.task_id);
         } catch(e) {}
     });
@@ -382,28 +404,28 @@ document.addEventListener('DOMContentLoaded', function() {
         const region = UI.regionSelector.value;
         log(`正在查询区域 ${region} 的实例...`);
         UI.instanceList.innerHTML = `<tr><td colspan="6" class="text-center">查询中... <div class="spinner-border spinner-border-sm"></div></td></tr>`;
-        try {
-            const instances = apiCall(`/api/instances?region=${region}`);
-            instances.then(data => {
-                UI.instanceList.innerHTML = '';
-                if (data && data.length > 0) {
-                    data.forEach(renderInstanceRow);
-                } else {
-                    UI.instanceList.innerHTML = `<tr><td colspan="6" class="text-center text-muted">该区域无实例</td></tr>`;
-                }
-                log(`区域 ${region} 查询完成。`, 'success');
-            });
-        } catch(error) { UI.instanceList.innerHTML = `<tr><td colspan="6" class="text-center text-danger">查询失败: ${error.message}</td></tr>`; }
+        apiCall(`/api/instances?region=${region}`).then(instances => {
+            UI.instanceList.innerHTML = '';
+            if (instances && instances.length > 0) {
+                instances.forEach(renderInstanceRow);
+            } else {
+                UI.instanceList.innerHTML = `<tr><td colspan="6" class="text-center text-muted">该区域无实例</td></tr>`;
+            }
+            log(`区域 ${region} 查询完成。`, 'success');
+        }).catch(error => {
+            UI.instanceList.innerHTML = `<tr><td colspan="6" class="text-center text-danger">查询失败: ${error.message}</td></tr>`;
+        });
     });
     UI.queryAllRegionsBtn.addEventListener('click', () => {
         selectedInstance = null;
         updateActionButtonsState();
         log("即将查询所有区域，过程可能较慢，请稍候...");
-        try {
-            const data = apiCall('/api/query-all-instances', { method: 'POST' });
-            data.then(d => { if(d && d.task_id) startLogPolling(d.task_id, true); });
-        } catch(error) { /* handled */ }
+        apiCall('/api/query-all-instances', { method: 'POST' })
+            .then(data => {
+                if(data && data.task_id) startLogPolling(data.task_id, true);
+            });
     });
+    
     UI.startBtn.addEventListener('click', () => handleActionClick('start'));
     UI.stopBtn.addEventListener('click', () => handleActionClick('stop'));
     UI.restartBtn.addEventListener('click', () => handleActionClick('restart'));
