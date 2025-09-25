@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import boto3, os, threading, time, queue, json, logging, math
 from botocore.exceptions import ClientError
 from botocore.config import Config
@@ -6,12 +7,12 @@ from functools import wraps
 
 app = Flask(__name__)
 app.secret_key = 'f9bade69a7e9423a9d0834921f855353'
-PASSWORD = "050148Sq$"
+PASSWORD = "1325"
 
 # --- 常量定义 ---
 KEY_FILE = "key.txt"
 QUOTA_CODE = 'L-1216C47A' # vCPU Quota
-QUOTA_REGION = 'us-east-1' 
+QUOTA_REGION = 'us-east-1'
 REGION_MAPPING = {
     "af-south-1": "af-south-1 (非洲（开普敦）)",
     "ap-east-1": "ap-east-1 (亚太地区（香港）)",
@@ -165,28 +166,20 @@ def activate_region_task(task_id, access_key, secret_key, region):
         client.enable_region(RegionName=region)
         log_task(task_id, f"区域 {region} 激活请求已成功提交。"); log_task(task_id, "--- 任务完成 ---")
     except Exception as e: handle_aws_error(e, task_id)
-    
-# 【已修改】查询所有实例的函数，增加只查询Lightsail可用区域的逻辑
 def query_all_instances_task(task_id, access_key, secret_key):
     log_task(task_id, "开始查询所有已激活区域的实例...")
     try:
-        # 获取所有已激活的EC2区域
         ec2_client_main = boto3.client('ec2', region_name='us-east-1', aws_access_key_id=access_key, aws_secret_access_key=secret_key, config=get_boto_config())
         response = ec2_client_main.describe_regions(Filters=[{'Name': 'opt-in-status', 'Values': ['opt-in-not-required', 'opted-in']}])
         enabled_regions = [r['RegionName'] for r in response['Regions']]
-
-        # 新增逻辑：获取所有支持 Lightsail 的区域
-        # 我们使用us-east-1作为通用入口来调用 Lightsail API
         log_task(task_id, "正在获取支持Lightsail的区域列表...")
         lightsail_regions_client = boto3.client('lightsail', region_name='us-east-1', aws_access_key_id=access_key, aws_secret_access_key=secret_key, config=get_boto_config())
         lightsail_regions = {r['name'] for r in lightsail_regions_client.get_regions()['regions']}
         log_task(task_id, f"已获取支持Lightsail的区域: {', '.join(lightsail_regions)}")
-
         log_task(task_id, f"将要查询的区域: {', '.join(enabled_regions)}")
         total_found = 0
         for region in enabled_regions:
             log_task(task_id, f"正在查询区域: {region}...")
-            # 查询 EC2 实例
             try:
                 ec2_client = boto3.client('ec2', region_name=region, aws_access_key_id=access_key, aws_secret_access_key=secret_key, config=get_boto_config())
                 for r in ec2_client.describe_instances(Filters=[{'Name':'instance-state-name','Values':['pending','running','stopped']}])['Reservations']:
@@ -195,8 +188,6 @@ def query_all_instances_task(task_id, access_key, secret_key):
                         log_task(task_id, "FOUND_INSTANCE::" + json.dumps(instance_data)); total_found += 1
             except Exception as e:
                 log_task(task_id, f"查询EC2实例失败({region}): {handle_aws_error(e)}")
-            
-            # 【新增】只有当该区域支持 Lightsail 时才进行查询
             if region in lightsail_regions:
                 try:
                     lightsail_client = boto3.client('lightsail', region_name=region, aws_access_key_id=access_key, aws_secret_access_key=secret_key, config=get_boto_config())
@@ -207,7 +198,6 @@ def query_all_instances_task(task_id, access_key, secret_key):
                     log_task(task_id, f"查询Lightsail实例失败({region}): {handle_aws_error(e)}")
             else:
                 log_task(task_id, f"跳过区域 {region}，因为它不支持 Lightsail。")
-
         log_task(task_id, f"所有区域查询完毕，共找到 {total_found} 个实例。"); log_task(task_id, "--- 任务完成 ---")
     except Exception as e: handle_aws_error(e, task_id)
 
@@ -283,15 +273,34 @@ def aws_session():
 @aws_login_required
 def get_regions():
     try:
-        client = boto3.client('ec2', region_name='us-east-1', aws_access_key_id=g.aws_access_key_id, aws_secret_access_key=g.aws_secret_access_key, config=get_boto_config())
-        response = client.describe_regions(AllRegions=True)
-        regions = [{"code": r['RegionName'], "name": REGION_MAPPING.get(r['RegionName'], r['RegionName']), "enabled": r['OptInStatus'] in ['opt-in-not-required', 'opted-in']} for r in response['Regions']]
+        # 1. 获取所有 Lightsail 支持的区域
+        lightsail_client = boto3.client('lightsail', region_name='us-east-1', aws_access_key_id=g.aws_access_key_id, aws_secret_access_key=g.aws_secret_access_key, config=get_boto_config())
+        lightsail_regions_info = lightsail_client.get_regions()
+        lightsail_supported_regions = {r['name'] for r in lightsail_regions_info['regions']}
+
+        # 2. 获取所有 EC2 区域
+        ec2_client = boto3.client('ec2', region_name='us-east-1', aws_access_key_id=g.aws_access_key_id, aws_secret_access_key=g.aws_secret_access_key, config=get_boto_config())
+        ec2_regions_response = ec2_client.describe_regions(AllRegions=True)
+        
+        # 3. 组合信息
+        regions = []
+        for r in ec2_regions_response['Regions']:
+            region_code = r['RegionName']
+            regions.append({
+                "code": region_code,
+                "name": REGION_MAPPING.get(region_code, region_code),
+                "enabled": r['OptInStatus'] in ['opt-in-not-required', 'opted-in'],
+                "supports_lightsail": region_code in lightsail_supported_regions
+            })
+        
+        # 4. 排序并返回
         priority_regions = ['us-east-1', 'us-east-2', 'us-west-1', 'us-west-2']
         sorted_regions = sorted(regions, key=lambda r: (0 if r['code'] in priority_regions else 1, r['name']))
         return jsonify(sorted_regions)
-    except Exception as e: return jsonify({"error": handle_aws_error(e)}), 500
+    except Exception as e:
+        logging.error("Error in /api/regions:", exc_info=True)
+        return jsonify({"error": handle_aws_error(e)}), 500
 
-# 【已修改】get_instances函数，增加返回 launch_time
 @app.route("/api/instances")
 @login_required
 @aws_login_required
@@ -303,18 +312,18 @@ def get_instances():
         # 查询 EC2 实例
         ec2_client = boto3.client('ec2', region_name=region, aws_access_key_id=g.aws_access_key_id, aws_secret_access_key=g.aws_secret_access_key, config=get_boto_config())
         for r in ec2_client.describe_instances(Filters=[{'Name':'instance-state-name','Values':['pending','running','stopped']}])['Reservations']:
-            for i in r['Instances']: 
+            for i in r['Instances']:
                 instances.append({
-                    "type": "EC2", 
-                    "region": region, 
-                    "id": i['InstanceId'], 
-                    "name": next((t['Value'] for t in i.get('Tags',[]) if t['Key'] == 'Name'), i['InstanceId']), 
-                    "state": i['State']['Name'], 
+                    "type": "EC2",
+                    "region": region,
+                    "id": i['InstanceId'],
+                    "name": next((t['Value'] for t in i.get('Tags',[]) if t['Key'] == 'Name'), i['InstanceId']),
+                    "state": i['State']['Name'],
                     "ip": i.get('PublicIpAddress', 'N/A'),
                     "launch_time": i.get('LaunchTime').isoformat() if i.get('LaunchTime') else None
                 })
         
-        # 【新增】查询 Lightsail 实例，但要先检查该区域是否支持
+        # 查询 Lightsail 实例，但要先检查该区域是否支持
         lightsail_regions_client = boto3.client('lightsail', region_name='us-east-1', aws_access_key_id=g.aws_access_key_id, aws_secret_access_key=g.aws_secret_access_key, config=get_boto_config())
         lightsail_regions = {r['name'] for r in lightsail_regions_client.get_regions()['regions']}
 
@@ -331,15 +340,10 @@ def get_instances():
                     "launch_time": i.get('createdAt').isoformat() if i.get('createdAt') else None
                 })
         else:
-            # 如果区域不支持Lightsail，在日志中记录但不要返回错误
             logging.info(f"区域 {region} 不支持 Lightsail 服务，跳过查询。")
-
-
         return jsonify(instances)
-    except Exception as e: 
-        # 如果 EC2 查询也失败，则统一返回错误
+    except Exception as e:
         return jsonify({"error": handle_aws_error(e)}), 500
-
 
 @app.route("/api/instance-action", methods=["POST"])
 @login_required
@@ -448,7 +452,10 @@ def start_create_instance(service):
 @login_required
 @aws_login_required
 def start_activate_region():
-    region = request.args.get("region")
+    data = request.json
+    region = data.get("region")
+    if not region:
+        return jsonify({"error": "缺少 region 参数"}), 400
     task_id = f"activate-{region}-{int(time.time())}"
     threading.Thread(target=activate_region_task, args=(task_id, g.aws_access_key_id, g.aws_secret_access_key, region)).start()
     return jsonify({"success": True, "task_id": task_id})
