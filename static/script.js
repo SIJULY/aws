@@ -182,7 +182,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: JSON.stringify(payload)
             });
             if (response && response.message) {
-                 log(response.message, 'success');
+                log(response.message, 'success');
             }
             setTimeout(() => UI.querySelectedRegionBtn.dispatchEvent(new Event('click')), 5000);
         } catch (error) {
@@ -191,7 +191,51 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
     
-    // ... (其余所有函数和事件监听器保持不变) ...
+    // 【新增】处理所有区域查询的日志轮询
+    const startLogPolling = (taskId) => {
+        if (logPollingInterval) {
+            clearInterval(logPollingInterval);
+            logPollingInterval = null;
+        }
+        UI.instanceList.innerHTML = `<tr><td colspan="6" class="text-center">查询中... <div class="spinner-border spinner-border-sm"></div></td></tr>`;
+        
+        logPollingInterval = setInterval(async () => {
+            try {
+                const data = await apiCall(`/api/task/${taskId}/logs`);
+                if (data && data.logs) {
+                    data.logs.forEach(logLine => {
+                        if (logLine.startsWith("FOUND_INSTANCE::")) {
+                            try {
+                                const instanceData = JSON.parse(logLine.substring("FOUND_INSTANCE::".length));
+                                // 避免重复渲染，先检查实例是否已存在
+                                if (!document.querySelector(`[data-id="${instanceData.id}"]`)) {
+                                    renderInstanceRow(instanceData);
+                                }
+                            } catch (e) {
+                                log("无法解析实例数据: " + logLine, 'error');
+                            }
+                        } else {
+                            log(logLine);
+                        }
+                    });
+
+                    if (data.logs.includes("--- 任务完成 ---")) {
+                        clearInterval(logPollingInterval);
+                        logPollingInterval = null;
+                        log("所有区域查询任务已完成。", 'success');
+                        if (UI.instanceList.rows.length === 1 && UI.instanceList.querySelector('td.text-center').textContent.includes('查询中')) {
+                            UI.instanceList.innerHTML = `<tr><td colspan="6" class="text-center text-muted">未找到实例</td></tr>`;
+                        }
+                    }
+                }
+            } catch (error) {
+                clearInterval(logPollingInterval);
+                logPollingInterval = null;
+                log("日志轮询失败或任务已结束。", 'error');
+            }
+        }, 1000); // 每秒轮询一次
+    };
+    
     const setUIState = (isAwsLoggedIn) => {
         [UI.createEc2Btn, UI.createLsBtn, UI.querySelectedRegionBtn, UI.queryAllRegionsBtn, UI.regionSelector].forEach(el => el.disabled = !isAwsLoggedIn);
         UI.activateRegionBtn.disabled = true;
@@ -316,15 +360,15 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const data = await apiCall('/api/query-quota', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account_name: accountName, region: region }) });
             if (data && data.quota !== undefined) {
-                quotaCell.textContent = data.quota; 
+                quotaCell.textContent = data.quota;
                 quotaCell.classList.add('fw-bold');
                 log(`账户 ${accountName} 在区域 ${region} 的 vCPU 配额为: ${data.quota}`, 'success');
             } else {
                 quotaCell.textContent = `错误`;
                 log(`账户 ${accountName} 的 vCPU 配额查询未能返回有效数据。`, 'error');
             }
-        } catch (error) { 
-            quotaCell.textContent = '查询失败'; 
+        } catch (error) {
+            quotaCell.textContent = '查询失败';
         }
     };
     UI.accountList.addEventListener('click', async (event) => {
@@ -427,7 +471,7 @@ document.addEventListener('DOMContentLoaded', function() {
         log("即将查询所有区域，过程可能较慢，请稍候...");
         apiCall('/api/query-all-instances', { method: 'POST' })
             .then(data => {
-                if(data && data.task_id) startLogPolling(data.task_id, true);
+                if(data && data.task_id) startLogPolling(data.task_id);
             });
     });
     
