@@ -58,7 +58,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error(errorMsg);
             }
             const data = await response.json();
-            // 【新增】统一的错误日志记录
             if (data.error) {
                 log(data.error, 'error');
             }
@@ -189,20 +188,17 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
     
-    // 【已修复】日志轮询函数
     const startLogPolling = (taskId) => {
         if (logPollingInterval) {
             clearInterval(logPollingInterval);
             logPollingInterval = null;
         }
-        // 任务开始时，清空表格并显示“查询中”提示
         UI.instanceList.innerHTML = `<tr><td colspan="6" class="text-center" data-loading-row="true">查询中... <div class="spinner-border spinner-border-sm"></div></td></tr>`;
         
         logPollingInterval = setInterval(async () => {
             try {
                 const data = await apiCall(`/api/task/${taskId}/logs`);
                 if (data && data.logs) {
-                    // 在处理新日志之前，移除“查询中”的提示
                     const loadingRow = UI.instanceList.querySelector('td[data-loading-row="true"]');
                     if (loadingRow) {
                         loadingRow.parentNode.remove();
@@ -212,7 +208,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (logLine.startsWith("FOUND_INSTANCE::")) {
                             try {
                                 const instanceData = JSON.parse(logLine.substring("FOUND_INSTANCE::".length));
-                                // 避免重复渲染，先检查实例是否已存在
                                 if (!document.querySelector(`[data-id="${instanceData.id}"]`)) {
                                     renderInstanceRow(instanceData);
                                 }
@@ -224,13 +219,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     });
 
-                    // 检查任务是否完成
                     if (data.logs.includes("--- 任务完成 ---")) {
                         clearInterval(logPollingInterval);
                         logPollingInterval = null;
                         log("所有区域查询任务已完成。", 'success');
                         
-                        // 任务完成时，如果表格为空，则显示“未找到实例”
                         if (UI.instanceList.rows.length === 0) {
                             UI.instanceList.innerHTML = `<tr><td colspan="6" class="text-center text-muted">未找到实例</td></tr>`;
                         }
@@ -241,7 +234,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 logPollingInterval = null;
                 log("日志轮询失败或任务已结束。", 'error');
             }
-        }, 1000); // 每秒轮询一次
+        }, 1000);
     };
     
     const setUIState = (isAwsLoggedIn) => {
@@ -300,12 +293,25 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         } catch (error) { setUIState(false); }
     };
+
+    // ===============================================
+    // 第 1 处修改：加载区域时，添加 data-supports-lightsail 属性
+    // ===============================================
     const loadRegions = async () => {
         log('正在加载区域列表...');
         try {
             const regions = await apiCall('/api/regions');
             if (!regions) return;
-            UI.regionSelector.innerHTML = regions.map(r => `<option value="${r.code}" data-enabled="${r.enabled}">${r.name} ${r.enabled ? '' : '(未激活)'}</option>`).join('');
+            // 【修改此行】在 option 标签中增加了 data-supports-lightsail 属性
+            UI.regionSelector.innerHTML = regions.map(r => 
+                `<option 
+                    value="${r.code}" 
+                    data-enabled="${r.enabled}" 
+                    data-supports-lightsail="${r.supports_lightsail}">
+                    ${r.name} ${r.enabled ? '' : '(未激活)'}
+                </option>`
+            ).join('');
+
             const defaultRegion = 'us-east-1';
             const optionExists = Array.from(UI.regionSelector.options).some(opt => opt.value === defaultRegion);
             if (optionExists) {
@@ -315,6 +321,7 @@ document.addEventListener('DOMContentLoaded', function() {
             UI.regionSelector.dispatchEvent(new Event('change'));
         } catch (error) { /* handled */ }
     };
+    
     const openInstanceTypeModal = async (type) => {
         const region = UI.regionSelector.value;
         const modal = (type === 'ec2') ? UI.ec2TypeModal : UI.lightsailTypeModal;
@@ -432,9 +439,14 @@ document.addEventListener('DOMContentLoaded', function() {
             queryQuota(accountName, region);
         });
     });
+
+    // ===============================================
+    // 第 2 处修改：区域选择变更时，控制 Lightsail 按钮状态
+    // ===============================================
     UI.regionSelector.addEventListener('change', () => {
         const selectedOption = UI.regionSelector.options[UI.regionSelector.selectedIndex];
         if (selectedOption) {
+            // 控制“激活区域”按钮
             const isEnabled = (selectedOption.dataset.enabled === 'true');
             UI.activateRegionBtn.disabled = isEnabled;
             if (isEnabled) {
@@ -444,14 +456,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 UI.activateRegionBtn.classList.remove('btn-secondary');
                 UI.activateRegionBtn.classList.add('btn-warning');
             }
+
+            // 【新增代码】控制“创建 Lightsail 实例”按钮
+            const supportsLightsail = (selectedOption.dataset.supportsLightsail === 'true');
+            UI.createLsBtn.disabled = !supportsLightsail;
+            // (可选) 为用户提供更友好的提示
+            if (supportsLightsail) {
+                UI.createLsBtn.title = '创建 Lightsail 实例';
+            } else {
+                UI.createLsBtn.title = '当前选定区域不支持 Lightsail 服务';
+            }
         }
     });
+
     UI.activateRegionBtn.addEventListener('click', async () => {
         const region = UI.regionSelector.value;
         if (!region || UI.activateRegionBtn.disabled) return;
         if (!confirm(`确定要激活区域 ${region} 吗？`)) return;
         try {
-            const data = await apiCall('/api/activate-region', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ region }) });
+            const data = await apiCall('/api/activate-region', { method: 'POST', body: JSON.stringify({ region }) });
             if(data && data.task_id) startLogPolling(data.task_id);
         } catch(e) {}
     });
