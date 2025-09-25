@@ -15,14 +15,14 @@
             cursor: pointer;
         }
 
-        /* --- 新增CSS：当创建Lightsail实例按钮被禁用时，改变其样式 --- */
-        #createLsBtn:disabled {
+        /* 当创建实例的按钮被禁用时，统一改变其样式为灰色 */
+        #createLsBtn:disabled,
+        #createEc2Btn:disabled {
             background-color: #e9ecef; /* Bootstrap风格的浅灰色 */
             border-color: #ced4da;     /* 边框颜色也一起变灰 */
             color: #6c757d;            /* 字体颜色变深一些，确保可读性 */
             opacity: 1;                /* 覆盖Bootstrap默认的透明度效果，让灰色更实 */
         }
-        /* --- 新增结束 --- */
     </style>
 </head>
 <body>
