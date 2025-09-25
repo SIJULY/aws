@@ -148,7 +148,6 @@ document.addEventListener('DOMContentLoaded', function() {
         setButtonState(UI.changeIpBtn, 'btn-info', isRunning && type === 'EC2');
     };
 
-    // 【已修改】修正了发送给后端的字段名
     const handleActionClick = async (action) => {
         if (!selectedInstance) {
             log('错误：请先在列表中选择一个实例。', 'error');
@@ -174,7 +173,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 action: action,
                 instance_id: instance.id,
                 region: instance.region,
-                instance_type: instance.type // 使用正确的字段名 instance_type
+                instance_type: instance.type
             };
             const response = await apiCall('/api/instance-action', {
                 method: 'POST',
@@ -186,23 +185,29 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             setTimeout(() => UI.querySelectedRegionBtn.dispatchEvent(new Event('click')), 5000);
         } catch (error) {
-            // apiCall函数已经记录了错误日志
             setTimeout(() => UI.querySelectedRegionBtn.dispatchEvent(new Event('click')), 500);
         }
     };
     
-    // 【新增】处理所有区域查询的日志轮询
+    // 【已修复】日志轮询函数
     const startLogPolling = (taskId) => {
         if (logPollingInterval) {
             clearInterval(logPollingInterval);
             logPollingInterval = null;
         }
-        UI.instanceList.innerHTML = `<tr><td colspan="6" class="text-center">查询中... <div class="spinner-border spinner-border-sm"></div></td></tr>`;
+        // 任务开始时，清空表格并显示“查询中”提示
+        UI.instanceList.innerHTML = `<tr><td colspan="6" class="text-center" data-loading-row="true">查询中... <div class="spinner-border spinner-border-sm"></div></td></tr>`;
         
         logPollingInterval = setInterval(async () => {
             try {
                 const data = await apiCall(`/api/task/${taskId}/logs`);
                 if (data && data.logs) {
+                    // 在处理新日志之前，移除“查询中”的提示
+                    const loadingRow = UI.instanceList.querySelector('td[data-loading-row="true"]');
+                    if (loadingRow) {
+                        loadingRow.parentNode.remove();
+                    }
+
                     data.logs.forEach(logLine => {
                         if (logLine.startsWith("FOUND_INSTANCE::")) {
                             try {
@@ -219,11 +224,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     });
 
+                    // 检查任务是否完成
                     if (data.logs.includes("--- 任务完成 ---")) {
                         clearInterval(logPollingInterval);
                         logPollingInterval = null;
                         log("所有区域查询任务已完成。", 'success');
-                        if (UI.instanceList.rows.length === 1 && UI.instanceList.querySelector('td.text-center').textContent.includes('查询中')) {
+                        
+                        // 任务完成时，如果表格为空，则显示“未找到实例”
+                        if (UI.instanceList.rows.length === 0) {
                             UI.instanceList.innerHTML = `<tr><td colspan="6" class="text-center text-muted">未找到实例</td></tr>`;
                         }
                     }
