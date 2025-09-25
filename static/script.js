@@ -293,16 +293,11 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         } catch (error) { setUIState(false); }
     };
-
-    // ===============================================
-    // 第 1 处修改：加载区域时，添加 data-supports-lightsail 属性
-    // ===============================================
     const loadRegions = async () => {
         log('正在加载区域列表...');
         try {
             const regions = await apiCall('/api/regions');
             if (!regions) return;
-            // 【修改此行】在 option 标签中增加了 data-supports-lightsail 属性
             UI.regionSelector.innerHTML = regions.map(r => 
                 `<option 
                     value="${r.code}" 
@@ -440,14 +435,14 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // ===============================================
-    // 第 2 处修改：区域选择变更时，控制 Lightsail 按钮状态
-    // ===============================================
     UI.regionSelector.addEventListener('change', () => {
         const selectedOption = UI.regionSelector.options[UI.regionSelector.selectedIndex];
         if (selectedOption) {
-            // 控制“激活区域”按钮
+            // --- 检查区域状态 ---
             const isEnabled = (selectedOption.dataset.enabled === 'true');
+            const supportsLightsail = (selectedOption.dataset.supportsLightsail === 'true');
+
+            // --- 控制“激活区域”按钮 ---
             UI.activateRegionBtn.disabled = isEnabled;
             if (isEnabled) {
                 UI.activateRegionBtn.classList.remove('btn-warning');
@@ -457,14 +452,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 UI.activateRegionBtn.classList.add('btn-warning');
             }
 
-            // 【新增代码】控制“创建 Lightsail 实例”按钮
-            const supportsLightsail = (selectedOption.dataset.supportsLightsail === 'true');
-            UI.createLsBtn.disabled = !supportsLightsail;
-            // (可选) 为用户提供更友好的提示
-            if (supportsLightsail) {
-                UI.createLsBtn.title = '创建 Lightsail 实例';
-            } else {
+            // --- 控制“创建 EC2 实例”按钮 ---
+            UI.createEc2Btn.disabled = !isEnabled;
+            UI.createEc2Btn.title = isEnabled ? '创建 EC2 实例' : '请先激活此区域后再创建实例';
+
+            // --- 控制“创建 Lightsail 实例”按钮 ---
+            // 区域未激活 或 该区域不支持Lightsail 时，都禁用按钮
+            UI.createLsBtn.disabled = !isEnabled || !supportsLightsail;
+            if (!isEnabled) {
+                UI.createLsBtn.title = '请先激活此区域后再创建实例';
+            } else if (!supportsLightsail) {
                 UI.createLsBtn.title = '当前选定区域不支持 Lightsail 服务';
+            } else {
+                UI.createLsBtn.title = '创建 Lightsail 实例';
             }
         }
     });
@@ -474,7 +474,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!region || UI.activateRegionBtn.disabled) return;
         if (!confirm(`确定要激活区域 ${region} 吗？`)) return;
         try {
-            const data = await apiCall('/api/activate-region', { method: 'POST', body: JSON.stringify({ region }) });
+            const data = await apiCall('/api/activate-region', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ region }) });
             if(data && data.task_id) startLogPolling(data.task_id);
         } catch(e) {}
     });
