@@ -6,8 +6,13 @@
 #   REGION=us-east-1 ./check-claude-access.sh   # 不指定 REGION 默认 us-east-2
 #
 # 密钥获取: AWS 控制台 -> Amazon Bedrock -> API 密钥 -> 生成长期 API 密钥
+#
+# 原理:
+#   1. 先调 ListInferenceProfiles 拿权威推理配置 ID(最可靠, 不靠猜);
+#   2. 再调 ListFoundationModels 拿基础模型列表, 对每个试"直接调用"和"global.启发式";
+#   3. 逐个用 Converse API 实测, 以 HTTP 200 为准。
 
-SCRIPT_VERSION="2026-09-28-v4"
+SCRIPT_VERSION="2026-09-28-v5"
 
 REGION="${REGION:-us-east-2}"
 
@@ -16,10 +21,64 @@ if [ -z "$AWS_BEARER_TOKEN_BEDROCK" ]; then
   exit 1
 fi
 
+AUTH_HEADER="Authorization: Bearer $AWS_BEARER_TOKEN_BEDROCK"
+
 echo "check-claude-access.sh $SCRIPT_VERSION"
-echo "正在查询 ${REGION} 区域的 Claude 模型..."
+
+test_model() {
+  local id="$1" enc="$1"
+  if [[ "$id" == *"/"* ]]; then
+    enc=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$id")
+  fi
+  curl -s -o /dev/null -w "%{http_code}" --max-time 20 -X POST \
+    -H "$AUTH_HEADER" \
+    -H "Content-Type: application/json" \
+    -d '{"messages":[{"role":"user","content":[{"text":"hi"}]}]}' \
+    "https://bedrock-runtime.${REGION}.amazonaws.com/model/${enc}/converse"
+}
+
+echo "正在查询 ${REGION} 区域的推理配置..."
+P_RESP=$(mktemp)
+P_CODE=$(curl -s -o "$P_RESP" -w "%{http_code}" --max-time 20 -H "$AUTH_HEADER" \
+  "https://bedrock.${REGION}.amazonaws.com/inference-profiles?maxResults=1000")
+
+PROFILES=""
+if [ "$P_CODE" = "200" ]; then
+  PROFILES=$(P_RESP="$P_RESP" python3 -c "
+import json, os, re
+raw = open(os.environ['P_RESP']).read()
+try:
+    data = json.loads(raw)
+except Exception:
+    data = {}
+ids = []
+if isinstance(data, dict):
+    for key in ('inferenceProfileSummaries', 'inferenceProfiles', 'profiles', 'items'):
+        items = data.get(key)
+        if isinstance(items, list):
+            for p in items:
+                if not isinstance(p, dict):
+                    continue
+                for f in ('inferenceProfileId', 'inferenceProfileArn', 'inferenceProfileName', 'arn', 'name', 'id'):
+                    v = p.get(f)
+                    if v and 'anthropic' in str(v).lower():
+                        ids.append(str(v))
+ids += re.findall(r'global\.anthropic\.[A-Za-z0-9_.:-]+', raw)
+seen = set(); out = []
+for i in ids:
+    if i not in seen:
+        seen.add(i); out.append(i)
+print(' '.join(out))
+")
+  echo "找到 $(echo "$PROFILES" | wc -w | tr -d ' ') 个 Claude 推理配置。"
+else
+  echo "推理配置列表查询失败(HTTP ${P_CODE:-无响应})，将跳过该项。"
+fi
+rm -f "$P_RESP"
+
+echo "正在查询 ${REGION} 区域的基础模型..."
 LIST_RESP=$(mktemp)
-LIST_CODE=$(curl -s -o "$LIST_RESP" -w "%{http_code}" -H "Authorization: Bearer $AWS_BEARER_TOKEN_BEDROCK" \
+LIST_CODE=$(curl -s -o "$LIST_RESP" -w "%{http_code}" --max-time 20 -H "$AUTH_HEADER" \
   "https://bedrock.${REGION}.amazonaws.com/foundation-models")
 
 if [ "$LIST_CODE" != "200" ]; then
@@ -43,32 +102,51 @@ print(' '.join(ids))
 ")
 rm -f "$LIST_RESP"
 
-if [ -z "$MODELS" ]; then
+if [ -z "$MODELS" ] && [ -z "$PROFILES" ]; then
   echo "该区域没有上架 Claude 模型。"
   exit 1
 fi
 
-test_model() {
-  curl -s -o /dev/null -w "%{http_code}" -X POST \
-    -H "Authorization: Bearer $AWS_BEARER_TOKEN_BEDROCK" \
-    -H "Content-Type: application/json" \
-    -d '{"messages":[{"role":"user","content":[{"text":"hi"}]}]}' \
-    "https://bedrock-runtime.${REGION}.amazonaws.com/model/$1/converse"
-}
+USABLE=""
 
-printf "\n%-50s %-10s %-10s %s\n" "模型 ID" "直接调用" "推理配置" "结论"
+echo ""
+echo "=== 权威推理配置实测 (ListInferenceProfiles) ==="
+if [ -z "$PROFILES" ]; then
+  echo "(无)"
+else
+  for p in $PROFILES; do
+    code=$(test_model "$p")
+    if [ "$code" = "200" ]; then status="✅ 可用"; USABLE="$USABLE $p"; else status="❌ ($code)"; fi
+    printf "%-60s %s\n" "$p" "$status"
+  done
+fi
+
+echo ""
+echo "=== 基础模型实测 (直接调用 / global.启发式) ==="
+printf "%-50s %-8s %-8s %s\n" "模型 ID" "直接" "启发式" "结论"
 echo "------------------------------------------------------------------------------------------"
 for m in $MODELS; do
   c1=$(test_model "$m")
   c2=$(test_model "global.$m")
   if [ "$c1" = "200" ] || [ "$c2" = "200" ]; then
     status="✅ 可用"
+    [ "$c1" = "200" ] && USABLE="$USABLE $m"
+    [ "$c2" = "200" ] && USABLE="$USABLE global.$m"
   else
     status="❌ 无权限"
   fi
   printf "%-50s %-10s %-10s %s\n" "$m" "$c1" "$c2" "$status"
 done
 
+USABLE=$(echo "$USABLE" | tr ' ' '\n' | awk 'NF && !seen[$0]++' | tr '\n' ' ')
+
 echo ""
-echo "判读: 200=能用; 403=账号无权限(需联系 AWS Sales 开通);"
-echo "      直接调用失败但推理配置 200 = 有权限, 使用时模型 ID 必须加 global. 前缀。"
+echo "=== 当前可用的 Claude 调用 ID ==="
+if [ -z "$USABLE" ]; then
+  echo "(无)"
+else
+  for u in $USABLE; do echo "  $u"; done
+fi
+echo ""
+echo "判读: 200=能用; 403=账号无权限(需联系 AWS Sales 开通); 404=该 ID 不存在(目录调整中, 可过段时间重查);"
+echo "      400(直接调用列)=新模型必须走推理配置, 属正常, 看其他列即可。"
