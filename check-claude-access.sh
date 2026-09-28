@@ -15,12 +15,31 @@ if [ -z "$AWS_BEARER_TOKEN_BEDROCK" ]; then
 fi
 
 echo "正在查询 ${REGION} 区域的 Claude 模型..."
-MODELS=$(curl -s -H "Authorization: Bearer $AWS_BEARER_TOKEN_BEDROCK" \
-  "https://bedrock.${REGION}.amazonaws.com/foundation-models" \
-  | python3 -c "import json,sys; print(' '.join(m['modelId'] for m in json.load(sys.stdin)['modelSummaries'] if 'anthropic' in m['modelId']))")
+LIST_RESP=$(mktemp)
+LIST_CODE=$(curl -s -o "$LIST_RESP" -w "%{http_code}" -H "Authorization: Bearer $AWS_BEARER_TOKEN_BEDROCK" \
+  "https://bedrock.${REGION}.amazonaws.com/foundation-models")
+
+if [ "$LIST_CODE" != "200" ]; then
+  echo "模型列表查询失败，HTTP 状态码: ${LIST_CODE:-无响应}"
+  echo "返回内容:"
+  head -c 500 "$LIST_RESP"; echo
+  rm -f "$LIST_RESP"
+  echo ""
+  echo "排查: 401/403 = 密钥无效或已被撤销，请去 Bedrock 控制台检查 API 密钥;"
+  echo "      无响应/000 = 网络波动，重试一次即可。"
+  exit 1
+fi
+
+MODELS=$(LIST_RESP="$LIST_RESP" python3 -c "
+import json, os
+data = json.load(open(os.environ['LIST_RESP']))
+ids = [m['modelId'] for m in data.get('modelSummaries', []) if 'anthropic' in m['modelId']]
+print(' '.join(ids))
+")
+rm -f "$LIST_RESP"
 
 if [ -z "$MODELS" ]; then
-  echo "该区域没有上架 Claude 模型，或密钥无效。"
+  echo "该区域没有上架 Claude 模型。"
   exit 1
 fi
 
