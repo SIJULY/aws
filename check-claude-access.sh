@@ -12,7 +12,7 @@
 #   2. 再调 ListFoundationModels 拿基础模型列表, 对每个试"直接调用"和"global.启发式";
 #   3. 逐个用 Converse API 实测, 以 HTTP 200 为准。
 
-SCRIPT_VERSION="2026-09-28-v6"
+SCRIPT_VERSION="2026-09-28-v7"
 
 REGION="${REGION:-us-east-2}"
 
@@ -59,18 +59,18 @@ if isinstance(data, dict):
             for p in items:
                 if not isinstance(p, dict):
                     continue
-                for f in ('inferenceProfileId', 'inferenceProfileArn', 'inferenceProfileName', 'arn', 'name', 'id'):
+                for f in ('inferenceProfileId',):
                     v = p.get(f)
                     if v and 'anthropic' in str(v).lower():
-                        ids.append(str(v))
+                        ids.append(str(v).strip())
 ids += re.findall(r'global\.anthropic\.[A-Za-z0-9_.:-]+', raw)
 seen = set(); out = []
 for i in ids:
     if i not in seen:
         seen.add(i); out.append(i)
-print(' '.join(out))
+print(chr(10).join(out))
 ")
-  echo "找到 $(echo "$PROFILES" | wc -w | tr -d ' ') 个 Claude 推理配置。"
+  echo "找到 $(echo "$PROFILES" | grep -c . 2>/dev/null || echo 0) 个 Claude 推理配置。"
 else
   echo "推理配置列表查询失败(HTTP ${P_CODE:-无响应})，将跳过该项。"
 fi
@@ -133,11 +133,12 @@ echo "=== 权威推理配置实测 (ListInferenceProfiles) ==="
 if [ -z "$PROFILES" ]; then
   echo "(无)"
 else
-  for p in $PROFILES; do
+  while IFS= read -r p; do
+    [ -z "$p" ] && continue
     code=$(test_model "$p")
     if [ "$code" = "200" ]; then status="✅ 可用"; USABLE="$USABLE $p"; else status="❌ ($code)"; fi
     printf "%-60s %s\n" "$p" "$status"
-  done
+  done <<< "$PROFILES"
 fi
 
 echo ""
