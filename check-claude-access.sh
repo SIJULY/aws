@@ -12,7 +12,7 @@
 #   2. 再调 ListFoundationModels 拿基础模型列表, 对每个试"直接调用"和"global.启发式";
 #   3. 逐个用 Converse API 实测, 以 HTTP 200 为准。
 
-SCRIPT_VERSION="2026-09-28-v5"
+SCRIPT_VERSION="2026-09-28-v6"
 
 REGION="${REGION:-us-east-2}"
 
@@ -105,6 +105,25 @@ rm -f "$LIST_RESP"
 if [ -z "$MODELS" ] && [ -z "$PROFILES" ]; then
   echo "该区域没有上架 Claude 模型。"
   exit 1
+fi
+
+# 预检: 账号是否提交了 Anthropic 模型使用案例表(未提交时所有 Claude 调用都会被拒)
+FIRST_MODEL=$(echo "$MODELS" | awk '{print $1}')
+if [ -n "$FIRST_MODEL" ]; then
+  PROBE_RESP=$(mktemp)
+  curl -s -o "$PROBE_RESP" --max-time 20 -X POST \
+    -H "$AUTH_HEADER" \
+    -H "Content-Type: application/json" \
+    -d '{"messages":[{"role":"user","content":[{"text":"hi"}]}]}' \
+    "https://bedrock-runtime.${REGION}.amazonaws.com/model/global.${FIRST_MODEL}/converse" || true
+  if grep -qi "use case details" "$PROBE_RESP" 2>/dev/null; then
+    echo ""
+    echo "⚠️  此账号尚未提交 Anthropic 模型使用案例表，所有 Claude 模型暂时无法调用。"
+    echo "   请前往 Bedrock 控制台 → 模型访问 → 提交 Anthropic 使用案例表，约 15 分钟后重跑本脚本。"
+    rm -f "$PROBE_RESP"
+    exit 1
+  fi
+  rm -f "$PROBE_RESP"
 fi
 
 USABLE=""
