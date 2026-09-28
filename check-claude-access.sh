@@ -7,6 +7,8 @@
 #
 # 密钥获取: AWS 控制台 -> Amazon Bedrock -> API 密钥 -> 生成长期 API 密钥
 
+SCRIPT_VERSION="2026-09-28-v3"
+
 REGION="${REGION:-us-east-2}"
 
 if [ -z "$AWS_BEARER_TOKEN_BEDROCK" ]; then
@@ -14,6 +16,7 @@ if [ -z "$AWS_BEARER_TOKEN_BEDROCK" ]; then
   exit 1
 fi
 
+echo "check-claude-access.sh $SCRIPT_VERSION"
 echo "正在查询 ${REGION} 区域的 Claude 模型..."
 LIST_RESP=$(mktemp)
 LIST_CODE=$(curl -s -o "$LIST_RESP" -w "%{http_code}" -H "Authorization: Bearer $AWS_BEARER_TOKEN_BEDROCK" \
