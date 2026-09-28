@@ -7,7 +7,7 @@
 #
 # 密钥获取: AWS 控制台 -> Amazon Bedrock -> API 密钥 -> 生成长期 API 密钥
 
-SCRIPT_VERSION="2026-09-28-v3"
+SCRIPT_VERSION="2026-09-28-v4"
 
 REGION="${REGION:-us-east-2}"
 
@@ -28,7 +28,9 @@ if [ "$LIST_CODE" != "200" ]; then
   head -c 500 "$LIST_RESP"; echo
   rm -f "$LIST_RESP"
   echo ""
-  echo "排查: 401/403 = 密钥无效或已被撤销，请去 Bedrock 控制台检查 API 密钥;"
+  echo "排查: 401 = 密钥无效;"
+  echo "      403 且返回中含 explicit deny in a service control policy = 被组织 SCP 策略禁止(常见于限制可用区域), 需联系 AWS 管理员修改策略;"
+  echo "      403 其他 = 密钥无权限或已被撤销，请去 Bedrock 控制台检查;"
   echo "      无响应/000 = 网络波动，重试一次即可。"
   exit 1
 fi
